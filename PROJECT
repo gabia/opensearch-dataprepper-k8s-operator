@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: dataprepper-operator
 repo: github.com/pkeugine/dataprepper-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: gabia.com
+  group: dataprepper
+  kind: DataPrepperCluster
+  path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

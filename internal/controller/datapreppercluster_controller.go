@@ -1,0 +1,195 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	dataprepperv1alpha1 "github.com/pkeugine/dataprepper-operator/api/v1alpha1"
+)
+
+// DataPrepperClusterReconciler reconciles a DataPrepperCluster object
+type DataPrepperClusterReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+}
+
+// +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update;patch
+
+func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	// 1. DataPrepperCluster CR 가져오기
+	cluster := &dataprepperv1alpha1.DataPrepperCluster{}
+	if err := r.Get(ctx, req.NamespacedName, cluster); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cluster.Spec.Image)
+
+	// 2. ConfigMap (파이프라인 설정 파일)
+	if err := r.reconcileConfigMap(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 3. Deployment (DataPrepper Pod)
+	if err := r.reconcileDeployment(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// 4. Service (HTTP 포트 노출)
+	if err := r.reconcileService(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	desired := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:		cluster.Name + "-pipelines",
+			Namespace:	cluster.Namespace, 
+		},
+		Data: map[string]string{
+			"pipelines.yaml": "# pipelines will be added by DataPrepperPipeline\n",
+		},
+	}
+	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+
+	existing := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if errors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	existing.Data = desired.Data
+	return r.Update(ctx, existing)
+}
+
+func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	replicas := cluster.Spec.Replicas
+	desired := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cluster.Name,
+			Namespace: cluster.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": cluster.Name},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": cluster.Name},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "data-prepper",
+							Image: cluster.Spec.Image,
+							Ports: []corev1.ContainerPort{
+								{Name: "http", ContainerPort: 4900},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "pipelines",
+									MountPath: "/usr/share/data-prepper/pipelines",
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "pipelines",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: cluster.Name + "-pipelines",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if errors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	existing.Spec.Replicas = desired.Spec.Replicas
+	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
+	return r.Update(ctx, existing)
+}
+
+func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cluster.Name,
+			Namespace: cluster.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": cluster.Name},
+			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 4900, TargetPort: intstr.FromString("http")},
+			},
+		},
+	}
+	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+
+	existing := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if errors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	return err
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *DataPrepperClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&dataprepperv1alpha1.DataPrepperCluster{}).
+		Named("datapreppercluster").
+		Complete(r)
+}
