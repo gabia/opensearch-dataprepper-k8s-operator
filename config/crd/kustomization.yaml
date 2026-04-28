@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/dataprepper.gabia.com_dataprepperclusters.yaml
+- bases/dataprepper.gabia.com_dataprepperpipelines.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

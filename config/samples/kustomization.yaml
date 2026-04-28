@@ -1,4 +1,5 @@
 ## Append samples of your project ##
 resources:
 - dataprepper_v1alpha1_datapreppercluster.yaml
+- dataprepper_v1alpha1_dataprepperpipeline.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

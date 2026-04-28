@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -76,28 +77,41 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{}, nil
 }
 
-func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
-	desired := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:		cluster.Name + "-pipelines",
-			Namespace:	cluster.Namespace, 
-		},
-		Data: map[string]string{
-			"pipelines.yaml": "# pipelines will be added by DataPrepperPipeline\n",
-		},
-	}
-	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+// defaultPipelineYaml is the placeholder pipeline used until a DataPrepperPipeline CR is created.
+// DataPrepper requires at least one valid pipeline to start.
+const defaultPipelineYaml = `placeholder-pipeline:
+  source:
+    http:
+      port: 2021
+  sink:
+    - stdout:
+`
 
+func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	cmName := cluster.Name + "-pipelines"
 	existing := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
-	if errors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+	err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: cmName}, existing)
+	if err == nil {
+		// ConfigMap exists - DataPrepperPipeline controller manages its data.
+		return nil
 	}
-	if err != nil {
+	if !errors.IsNotFound(err) {
 		return err
 	}
-	existing.Data = desired.Data
-	return r.Update(ctx, existing)
+
+	desired := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cmName,
+			Namespace: cluster.Namespace,
+		},
+		Data: map[string]string{
+			"pipelines.yaml": defaultPipelineYaml,
+		},
+	}
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
+	return r.Create(ctx, desired)
 }
 
 func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
