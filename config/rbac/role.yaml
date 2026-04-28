@@ -30,6 +30,14 @@ rules:
 - apiGroups:
   - dataprepper.gabia.com
   resources:
+  - dataprepperclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - dataprepper.gabia.com
+  resources:
   - dataprepperclusters
   - dataprepperpipelines
   verbs:

@@ -56,9 +56,16 @@ spec:
           spec:
             description: spec defines the desired state of DataPrepperCluster
             properties:
+              classRef:
+                description: |-
+                  classRef is the name of a DataPrepperClass to use as a template.
+                  When set, the class provides the default image and resource requirements.
+                  Spec fields on DataPrepperCluster override values from the class.
+                type: string
               image:
-                description: image is the DataPrepper container image name (e.g. opensearchproject/data-prepper:2.13.0).
-                minLength: 1
+                description: |-
+                  image is the DataPrepper container image name (e.g. opensearchproject/data-prepper:2.13.0).
+                  Required if classRef is not set; otherwise overrides the class image.
                 type: string
               replicas:
                 default: 1
@@ -67,7 +74,6 @@ spec:
                 minimum: 1
                 type: integer
             required:
-            - image
             - replicas
             type: object
           status:

@@ -27,4 +27,11 @@ resources:
   kind: DataPrepperPipeline
   path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+  domain: gabia.com
+  group: dataprepper
+  kind: DataPrepperClass
+  path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

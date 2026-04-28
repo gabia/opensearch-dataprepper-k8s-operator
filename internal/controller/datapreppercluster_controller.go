@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +35,13 @@ import (
 	dataprepperv1alpha1 "github.com/pkeugine/dataprepper-operator/api/v1alpha1"
 )
 
+// resolvedConfig is the effective configuration after merging DataPrepperClass defaults
+// with DataPrepperCluster overrides.
+type resolvedConfig struct {
+	Image     string
+	Resources corev1.ResourceRequirements
+}
+
 // DataPrepperClusterReconciler reconciles a DataPrepperCluster object
 type DataPrepperClusterReconciler struct {
 	client.Client
@@ -44,6 +52,7 @@ type DataPrepperClusterReconciler struct {
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperpipelines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update;patch
 
@@ -59,24 +68,30 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cluster.Spec.Image)
+	// 2. Resolve image/resources from optional DataPrepperClass
+	cfg, err := r.resolveConfig(ctx, cluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-	// 2. ConfigMap (파이프라인 설정 파일)
+	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cfg.Image, "classRef", cluster.Spec.ClassRef)
+
+	// 3. ConfigMap (파이프라인 설정 파일)
 	if err := r.reconcileConfigMap(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// 3. Deployment (DataPrepper Pod)
-	if err := r.reconcileDeployment(ctx, cluster); err != nil {
+	// 4. Deployment (DataPrepper Pod)
+	if err := r.reconcileDeployment(ctx, cluster, cfg); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// 4. Service (HTTP 포트 노출)
+	// 5. Service (HTTP 포트 노출)
 	if err := r.reconcileService(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// 5. Status 업데이트
+	// 6. Status 업데이트
 	if err := r.reconcileStatus(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -122,6 +137,27 @@ func (r *DataPrepperClusterReconciler) reconcileStatus(ctx context.Context, clus
 	return r.Status().Update(ctx, cluster)
 }
 
+// resolveConfig merges DataPrepperClass defaults (if classRef is set) with cluster spec overrides.
+func (r *DataPrepperClusterReconciler) resolveConfig(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) (*resolvedConfig, error) {
+	cfg := &resolvedConfig{
+		Image: cluster.Spec.Image,
+	}
+	if cluster.Spec.ClassRef != "" {
+		class := &dataprepperv1alpha1.DataPrepperClass{}
+		if err := r.Get(ctx, types.NamespacedName{Name: cluster.Spec.ClassRef}, class); err != nil {
+			return nil, fmt.Errorf("failed to get DataPrepperClass %q: %w", cluster.Spec.ClassRef, err)
+		}
+		if cfg.Image == "" {
+			cfg.Image = class.Spec.Image
+		}
+		cfg.Resources = class.Spec.Resources
+	}
+	if cfg.Image == "" {
+		return nil, fmt.Errorf("either spec.image or spec.classRef must be set")
+	}
+	return cfg, nil
+}
+
 // defaultPipelineYaml is the placeholder pipeline used until a DataPrepperPipeline CR is created.
 // DataPrepper requires at least one valid pipeline to start.
 const defaultPipelineYaml = `placeholder-pipeline:
@@ -159,7 +195,7 @@ func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, c
 	return r.Create(ctx, desired)
 }
 
-func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster, cfg *resolvedConfig) error {
 	replicas := cluster.Spec.Replicas
 	desired := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -178,8 +214,9 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "data-prepper",
-							Image: cluster.Spec.Image,
+							Name:      "data-prepper",
+							Image:     cfg.Image,
+							Resources: cfg.Resources,
 							Ports: []corev1.ContainerPort{
 								{Name: "http", ContainerPort: 4900},
 							},
@@ -219,6 +256,7 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
 	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
+	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 	return r.Update(ctx, existing)
 }
 

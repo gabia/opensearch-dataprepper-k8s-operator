@@ -4,6 +4,7 @@
 resources:
 - bases/dataprepper.gabia.com_dataprepperclusters.yaml
 - bases/dataprepper.gabia.com_dataprepperpipelines.yaml
+- bases/dataprepper.gabia.com_dataprepperclasses.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

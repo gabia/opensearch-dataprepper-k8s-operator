@@ -25,9 +25,16 @@ import (
 
 // DataPrepperClusterSpec defines the desired state of DataPrepperCluster
 type DataPrepperClusterSpec struct {
+	// classRef is the name of a DataPrepperClass to use as a template.
+	// When set, the class provides the default image and resource requirements.
+	// Spec fields on DataPrepperCluster override values from the class.
+	// +optional
+	ClassRef string `json:"classRef,omitempty"`
+
 	// image is the DataPrepper container image name (e.g. opensearchproject/data-prepper:2.13.0).
-	// +kubebuilder:validation:MinLength=1
-	Image string `json:"image"`
+	// Required if classRef is not set; otherwise overrides the class image.
+	// +optional
+	Image string `json:"image,omitempty"`
 
 	// replicas is the desired number of DataPrepper instances.
 	// +kubebuilder:default=1

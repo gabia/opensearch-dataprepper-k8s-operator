@@ -2,4 +2,5 @@
 resources:
 - dataprepper_v1alpha1_datapreppercluster.yaml
 - dataprepper_v1alpha1_dataprepperpipeline.yaml
+- dataprepper_v1alpha1_dataprepperclass.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
