@@ -35,23 +35,34 @@ type DataPrepperClusterSpec struct {
 	Replicas int32 `json:"replicas"`
 }
 
+// DataPrepperClusterPhase represents the high-level state of a DataPrepperCluster.
+type DataPrepperClusterPhase string
+
+const (
+	DataPrepperClusterPhasePending  DataPrepperClusterPhase = "Pending"
+	DataPrepperClusterPhaseReady    DataPrepperClusterPhase = "Ready"
+	DataPrepperClusterPhaseDegraded DataPrepperClusterPhase = "Degraded"
+)
+
 // DataPrepperClusterStatus defines the observed state of DataPrepperCluster.
 type DataPrepperClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// phase is the high-level state of the cluster: Pending, Ready, or Degraded.
+	// +optional
+	Phase DataPrepperClusterPhase `json:"phase,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+	// readyReplicas is the number of DataPrepper pods that are ready.
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
+
+	// pipelines is the number of DataPrepperPipeline resources targeting this cluster.
+	// +optional
+	Pipelines int32 `json:"pipelines,omitempty"`
+
+	// observedGeneration is the most recent generation observed for this DataPrepperCluster.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the DataPrepperCluster resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -60,6 +71,11 @@ type DataPrepperClusterStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
+// +kubebuilder:printcolumn:name="Desired",type=integer,JSONPath=`.spec.replicas`
+// +kubebuilder:printcolumn:name="Pipelines",type=integer,JSONPath=`.status.pipelines`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // DataPrepperCluster is the Schema for the dataprepperclusters API
 type DataPrepperCluster struct {

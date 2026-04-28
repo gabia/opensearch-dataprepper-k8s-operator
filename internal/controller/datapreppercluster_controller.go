@@ -21,6 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,7 @@ type DataPrepperClusterReconciler struct {
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperpipelines,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update;patch
 
@@ -74,7 +76,50 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// 5. Status 업데이트
+	if err := r.reconcileStatus(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *DataPrepperClusterReconciler) reconcileStatus(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	deploy := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: cluster.Name}, deploy); err != nil {
+		return err
+	}
+
+	pipelineList := &dataprepperv1alpha1.DataPrepperPipelineList{}
+	if err := r.List(ctx, pipelineList, client.InNamespace(cluster.Namespace)); err != nil {
+		return err
+	}
+	pipelineCount := int32(0)
+	for _, p := range pipelineList.Items {
+		if p.Spec.ClusterRef == cluster.Name && p.DeletionTimestamp.IsZero() {
+			pipelineCount++
+		}
+	}
+
+	phase := dataprepperv1alpha1.DataPrepperClusterPhasePending
+	if deploy.Status.ReadyReplicas >= cluster.Spec.Replicas && cluster.Spec.Replicas > 0 {
+		phase = dataprepperv1alpha1.DataPrepperClusterPhaseReady
+	} else if deploy.Status.UnavailableReplicas > 0 && deploy.Status.ReadyReplicas == 0 {
+		phase = dataprepperv1alpha1.DataPrepperClusterPhaseDegraded
+	}
+
+	desired := dataprepperv1alpha1.DataPrepperClusterStatus{
+		Phase:              phase,
+		ReadyReplicas:      deploy.Status.ReadyReplicas,
+		Pipelines:          pipelineCount,
+		ObservedGeneration: cluster.Generation,
+		Conditions:         cluster.Status.Conditions,
+	}
+	if apiequality.Semantic.DeepEqual(cluster.Status, desired) {
+		return nil
+	}
+	cluster.Status = desired
+	return r.Status().Update(ctx, cluster)
 }
 
 // defaultPipelineYaml is the placeholder pipeline used until a DataPrepperPipeline CR is created.

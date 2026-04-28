@@ -86,6 +86,15 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.rebuildClusterConfig(ctx, pipeline.Namespace, clusterRef, ""); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	if pipeline.Status.Phase != dataprepperv1alpha1.DataPrepperPipelinePhaseApplied ||
+		pipeline.Status.ObservedGeneration != pipeline.Generation {
+		pipeline.Status.Phase = dataprepperv1alpha1.DataPrepperPipelinePhaseApplied
+		pipeline.Status.ObservedGeneration = pipeline.Generation
+		if err := r.Status().Update(ctx, pipeline); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	return ctrl.Result{}, nil
 }
 

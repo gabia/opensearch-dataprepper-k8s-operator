@@ -14,7 +14,17 @@ spec:
     singular: dataprepperpipeline
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.clusterRef
+      name: Cluster
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: DataPrepperPipeline is the Schema for the dataprepperpipelines
@@ -58,16 +68,8 @@ spec:
             description: status defines the observed state of DataPrepperPipeline
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the DataPrepperPipeline resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: conditions represent the current state of the DataPrepperPipeline
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -126,6 +128,15 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  for this DataPrepperPipeline.
+                format: int64
+                type: integer
+              phase:
+                description: 'phase is the high-level state of the pipeline: Pending
+                  or Applied.'
+                type: string
             type: object
         required:
         - spec

@@ -14,7 +14,23 @@ spec:
     singular: datapreppercluster
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.readyReplicas
+      name: Ready
+      type: integer
+    - jsonPath: .spec.replicas
+      name: Desired
+      type: integer
+    - jsonPath: .status.pipelines
+      name: Pipelines
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: DataPrepperCluster is the Schema for the dataprepperclusters
@@ -58,16 +74,8 @@ spec:
             description: status defines the observed state of DataPrepperCluster
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the DataPrepperCluster resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                description: conditions represent the current state of the DataPrepperCluster
+                  resource.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -126,6 +134,25 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: observedGeneration is the most recent generation observed
+                  for this DataPrepperCluster.
+                format: int64
+                type: integer
+              phase:
+                description: 'phase is the high-level state of the cluster: Pending,
+                  Ready, or Degraded.'
+                type: string
+              pipelines:
+                description: pipelines is the number of DataPrepperPipeline resources
+                  targeting this cluster.
+                format: int32
+                type: integer
+              readyReplicas:
+                description: readyReplicas is the number of DataPrepper pods that
+                  are ready.
+                format: int32
+                type: integer
             type: object
         required:
         - spec
