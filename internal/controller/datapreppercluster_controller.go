@@ -287,6 +287,9 @@ func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, clu
 func (r *DataPrepperClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dataprepperv1alpha1.DataPrepperCluster{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Service{}).
 		Named("datapreppercluster").
 		Complete(r)
 }
