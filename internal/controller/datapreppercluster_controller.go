@@ -197,6 +197,61 @@ func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, c
 
 func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster, cfg *resolvedConfig) error {
 	replicas := cluster.Spec.Replicas
+
+	ports := append([]corev1.ContainerPort{
+		{Name: "http", ContainerPort: 4900},
+	}, cluster.Spec.ExtraPorts...)
+
+	volumes := []corev1.Volume{
+		{
+			Name: "pipelines",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cluster.Name + "-pipelines",
+					},
+				},
+			},
+		},
+	}
+	volumeMounts := []corev1.VolumeMount{
+		{Name: "pipelines", MountPath: "/usr/share/data-prepper/pipelines"},
+	}
+
+	if cluster.Spec.AssetsConfigMap != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "assets",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cluster.Spec.AssetsConfigMap},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "assets",
+			MountPath: "/usr/share/data-prepper/assets",
+		})
+	}
+
+	if cluster.Spec.ServerConfigMap != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "server-config",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cluster.Spec.ServerConfigMap},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "server-config",
+			MountPath: "/usr/share/data-prepper/config/data-prepper-config.yaml",
+			SubPath:   "data-prepper-config.yaml",
+		})
+	}
+
+	volumes = append(volumes, cluster.Spec.ExtraVolumes...)
+	volumeMounts = append(volumeMounts, cluster.Spec.ExtraVolumeMounts...)
+
 	desired := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
@@ -214,32 +269,14 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:      "data-prepper",
-							Image:     cfg.Image,
-							Resources: cfg.Resources,
-							Ports: []corev1.ContainerPort{
-								{Name: "http", ContainerPort: 4900},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "pipelines",
-									MountPath: "/usr/share/data-prepper/pipelines",
-								},
-							},
+							Name:         "data-prepper",
+							Image:        cfg.Image,
+							Resources:    cfg.Resources,
+							Ports:        ports,
+							VolumeMounts: volumeMounts,
 						},
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "pipelines",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cluster.Name + "-pipelines",
-									},
-								},
-							},
-						},
-					},
+					Volumes: volumes,
 				},
 			},
 		},
@@ -257,6 +294,9 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	existing.Spec.Replicas = desired.Spec.Replicas
 	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
 	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
+	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
+	existing.Spec.Template.Spec.Containers[0].VolumeMounts = desired.Spec.Template.Spec.Containers[0].VolumeMounts
+	existing.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
 	return r.Update(ctx, existing)
 }
 

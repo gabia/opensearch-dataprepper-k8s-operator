@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,6 +41,33 @@ type DataPrepperClusterSpec struct {
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	Replicas int32 `json:"replicas"`
+
+	// serverConfigMap is the name of a ConfigMap (in the same namespace) holding
+	// a single key 'data-prepper-config.yaml'. When set, the operator mounts that
+	// key over /usr/share/data-prepper/config/data-prepper-config.yaml via subPath.
+	// +optional
+	ServerConfigMap string `json:"serverConfigMap,omitempty"`
+
+	// assetsConfigMap is the name of a ConfigMap (in the same namespace) whose
+	// entries are mounted into /usr/share/data-prepper/assets/. Use this for
+	// index templates and ISM policy JSON files referenced from pipeline YAML.
+	// +optional
+	AssetsConfigMap string `json:"assetsConfigMap,omitempty"`
+
+	// extraVolumes are additional pod-level volumes (ConfigMap, Secret, etc.)
+	// merged with the operator-managed pipelines volume.
+	// +optional
+	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
+
+	// extraVolumeMounts are additional volume mounts for the data-prepper container,
+	// merged with the operator-managed pipelines mount.
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+
+	// extraPorts are additional container ports to expose on the data-prepper container,
+	// merged with the operator-managed http (4900) port.
+	// +optional
+	ExtraPorts []corev1.ContainerPort `json:"extraPorts,omitempty"`
 }
 
 // DataPrepperClusterPhase represents the high-level state of a DataPrepperCluster.
