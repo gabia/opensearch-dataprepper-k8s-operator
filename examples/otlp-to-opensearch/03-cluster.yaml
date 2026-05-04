@@ -1,0 +1,22 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: gabia-otel-poc
+  namespace: operator-lab
+spec:
+  image: opensearchproject/data-prepper:2.15.0
+  replicas: 1
+  # Mount data-prepper-config.yaml from the ConfigMap below over
+  # /usr/share/data-prepper/config/data-prepper-config.yaml.
+  serverConfigMap: dataprepper-config
+  # Mount index template / ISM policy JSON files into
+  # /usr/share/data-prepper/assets/. See README for how to populate this
+  # ConfigMap from the DataPrepper distribution's docs/.
+  assetsConfigMap: dataprepper-assets
+  extraPorts:
+    - name: otlp-traces
+      containerPort: 21890
+    - name: otlp-metrics
+      containerPort: 21891
+    - name: otlp-logs
+      containerPort: 21892

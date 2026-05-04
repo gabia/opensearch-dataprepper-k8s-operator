@@ -6,4 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: datapreppercluster-sample
 spec:
-  # TODO(user): Add fields here
+  # Reference a DataPrepperClass for image and default resources, or set
+  # spec.image directly. Spec values override class defaults when both are set.
+  classRef: dataprepper-2-15
+  replicas: 1

@@ -1,135 +1,142 @@
 # dataprepper-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator for [OpenSearch Data Prepper](https://github.com/opensearch-project/data-prepper) — manage DataPrepper instances and their pipelines as native Kubernetes resources, with hot pipeline updates and no manual config-map plumbing.
 
-## Getting Started
+[![Tests](https://github.com/pkeugine/dataprepper-operator/actions/workflows/test.yml/badge.svg)](https://github.com/pkeugine/dataprepper-operator/actions/workflows/test.yml)
+[![Lint](https://github.com/pkeugine/dataprepper-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/pkeugine/dataprepper-operator/actions/workflows/lint.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+
+## Why
+
+Stock DataPrepper bundles all of its routing, processing, and sink configuration into a single `pipelines.yaml`. Adding or modifying any pipeline in production typically means editing that file and restarting the process — losing in-flight data, briefly halting telemetry ingest, and coordinating the change manually across replicas.
+
+This operator splits that monolith in two:
+
+- A **`DataPrepperCluster`** describes the runtime (image, replicas, server config, asset templates).
+- One or more **`DataPrepperPipeline`** resources describe individual pipelines, each as its own Kubernetes object.
+
+Adding a pipeline is `kubectl apply -f new-pipeline.yaml`. The operator merges all pipelines targeting a cluster into one ConfigMap, hashes the content, and rolls the cluster only when the content actually changed.
+
+## Custom Resources
+
+| Kind | Scope | Purpose |
+|---|---|---|
+| `DataPrepperClass` | Cluster | Optional template — image + default resource requirements. Like `StorageClass` for `PersistentVolumeClaim`. |
+| `DataPrepperCluster` | Namespaced | A DataPrepper Deployment + Service. Optionally references a `DataPrepperClass` for defaults. |
+| `DataPrepperPipeline` | Namespaced | A single pipeline definition (raw DataPrepper YAML). Targets a `DataPrepperCluster` by name. |
+
+### `DataPrepperCluster` spec at a glance
+
+```yaml
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: my-prepper
+spec:
+  image: opensearchproject/data-prepper:2.15.0   # or use classRef
+  replicas: 2
+  serverConfigMap: dataprepper-config            # optional, for data-prepper-config.yaml
+  assetsConfigMap: dataprepper-assets            # optional, for /usr/share/data-prepper/assets/
+  extraPorts:                                    # optional, merged with the default 4900/http
+    - name: otlp
+      containerPort: 21892
+  # extraVolumes / extraVolumeMounts available as escape hatches
+```
+
+`serverConfigMap` and `assetsConfigMap` are first-class shortcuts for the two ConfigMaps every real DataPrepper deployment needs. Anything else can still be wired up via `extraVolumes` / `extraVolumeMounts` / `extraPorts` without forking the operator.
+
+### `DataPrepperPipeline` spec at a glance
+
+```yaml
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperPipeline
+metadata:
+  name: traces
+spec:
+  clusterRef: my-prepper          # which cluster this pipeline runs on
+  pipelineYaml: |                 # raw DataPrepper pipeline YAML, unmodified
+    traces-pipeline:
+      source:
+        otlp:
+          port: 21892
+      sink:
+        - opensearch:
+            hosts: [http://opensearch:9200]
+            index: otel-v1-apm-span
+```
+
+## How it works
+
+```
+DataPrepperCluster        DataPrepperPipeline (×N)
+        │                          │
+        │                          │ collected by clusterRef
+        ▼                          ▼
+  Deployment           ConfigMap (<cluster>-pipelines)
+  Service                       │
+        ▲                       │ content hash → annotation
+        └───────────────────────┘
+              rolling restart only when content changed
+```
+
+- **`DataPrepperClusterReconciler`** owns the Deployment, Service, and pipeline ConfigMap for each cluster. It resolves image/resources from `DataPrepperClass` (if `classRef` is set) and reports `Pending` / `Ready` / `Degraded` in `.status.phase`.
+- **`DataPrepperPipelineReconciler`** watches pipelines, the cluster, and the cluster's ConfigMap. On any change it rebuilds the merged pipeline content, writes it to the ConfigMap, and bumps a content-hash annotation on the Deployment's pod template — which triggers a rolling restart automatically. Identical content is a no-op, so the rolling restart only fires when something actually changed.
+- **Finalizers** on each `DataPrepperPipeline` ensure that deleting a pipeline rebuilds the ConfigMap and rolls the cluster on the way out, preventing orphaned config.
+
+## Quick start
 
 ### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+- Go 1.24+
+- Docker 17.03+
+- kubectl 1.11+
+- A Kubernetes 1.20+ cluster (the e2e tests target [kind](https://kind.sigs.k8s.io/))
 
-```sh
-make docker-build docker-push IMG=<some-registry>/dataprepper-operator:tag
-```
+### Install
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
-
-**Install the CRDs into the cluster:**
+Build and push the operator image, then install:
 
 ```sh
-make install
+make docker-build docker-push IMG=<registry>/dataprepper-operator:tag
+make install                                 # CRDs
+make deploy IMG=<registry>/dataprepper-operator:tag
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+### Try it
 
-```sh
-make deploy IMG=<some-registry>/dataprepper-operator:tag
-```
-
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+The fastest way to see the three CRDs in motion:
 
 ```sh
 kubectl apply -k config/samples/
+kubectl get datapreppercluster,dataprepperpipeline,dataprepperclass
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+For a real, end-to-end OTLP→OpenSearch flow with five interconnected pipelines, see [`examples/otlp-to-opensearch/`](./examples/otlp-to-opensearch/).
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+### Uninstall
 
 ```sh
 kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
+make undeploy
 make uninstall
 ```
 
-**UnDeploy the controller from the cluster:**
+## Development
 
 ```sh
-make undeploy
+make generate manifests   # regenerate deepcopy + CRDs after editing api/
+make lint                 # golangci-lint
+make test                 # unit / envtest
+make test-e2e             # full e2e against a kind cluster
+make run                  # run the controller locally against the current kubectl context
 ```
 
-## Project Distribution
+See [`AGENTS.md`](./AGENTS.md) for the project layout and rules around generated files.
 
-Following the options to release and provide this solution to the users.
+## Project status
 
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/dataprepper-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/dataprepper-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Alpha (`v1alpha1`). API may change. The operator is in active PoC use against a single-node cluster ingesting OTLP traffic from a real otel-collector into OpenSearch.
 
 ## License
 
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache License 2.0. See [`LICENSE`](./LICENSE).

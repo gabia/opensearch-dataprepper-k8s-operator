@@ -1,0 +1,99 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperPipeline
+metadata:
+  name: gabia-otel-poc-pipeline
+  namespace: operator-lab
+spec:
+  clusterRef: gabia-otel-poc
+  pipelineYaml: |
+    # Entry pipeline: receive OTLP, route by event type
+    otlp-pipeline:
+      source:
+        otlp:
+          ssl: false
+          port: 21892
+      route:
+        - logs: 'getEventType() == "LOG"'
+        - traces: 'getEventType() == "TRACE"'
+      sink:
+        - pipeline:
+            name: otel-logs-pipeline
+            routes:
+              - logs
+        - pipeline:
+            name: otel-traces-pipeline
+            routes:
+              - traces
+
+    # Logs: copy OTLP `time` -> `@timestamp`, write to logs-otel-v1
+    otel-logs-pipeline:
+      source:
+        pipeline:
+          name: otlp-pipeline
+      processor:
+        - copy_values:
+            entries:
+              - from_key: time
+                to_key: '@timestamp'
+      sink:
+        - opensearch:
+            hosts:
+              - http://opensearch-cluster-master.opensearch-system:9200
+            index: logs-otel-v1
+            index_type: custom
+            template_type: index-template
+            template_file: /usr/share/data-prepper/assets/logs-otel-v1-index-standard-template.json
+            ism_policy_file: /usr/share/data-prepper/assets/logs-policy-with-ism-template.json
+      workers: 4
+
+    # Traces: fan out to raw spans + service map
+    otel-traces-pipeline:
+      source:
+        pipeline:
+          name: otlp-pipeline
+      sink:
+        - pipeline:
+            name: traces-raw-pipeline
+        - pipeline:
+            name: service-map-pipeline
+
+    # Raw spans -> otel-v1-apm-span
+    traces-raw-pipeline:
+      source:
+        pipeline:
+          name: otel-traces-pipeline
+      processor:
+        - otel_traces:
+      sink:
+        - opensearch:
+            hosts:
+              - http://opensearch-cluster-master.opensearch-system:9200
+            index: otel-v1-apm-span
+            index_type: custom
+            template_type: index-template
+            template_file: /usr/share/data-prepper/assets/otel-v1-apm-span-index-standard-template.json
+            ism_policy_file: /usr/share/data-prepper/assets/raw-span-policy-with-ism-template.json
+
+    # Service map (requires DataPrepper >= 2.15) -> otel-v2-apm-service-map
+    service-map-pipeline:
+      source:
+        pipeline:
+          name: otel-traces-pipeline
+      processor:
+        - otel_apm_service_map:
+            group_by_attributes:
+              - telemetry.sdk.language
+            window_duration: 10s
+      route:
+        - otel_apm_service_map_route: 'getEventType() == "SERVICE_MAP"'
+      sink:
+        - opensearch:
+            hosts:
+              - http://opensearch-cluster-master.opensearch-system:9200
+            index: otel-v2-apm-service-map
+            index_type: custom
+            template_type: index-template
+            template_file: /usr/share/data-prepper/assets/otel-v2-apm-service-map-index-template.json
+            ism_policy_file: /usr/share/data-prepper/assets/otel-v2-apm-service-map-policy-with-ism-template.json
+            routes:
+              - otel_apm_service_map_route

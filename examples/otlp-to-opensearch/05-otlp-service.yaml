@@ -1,0 +1,29 @@
+# Optional: NodePort service to expose the DataPrepper OTLP ports outside the
+# cluster, e.g. for external otel-collectors. Inside the cluster, callers
+# should use the operator-managed Service `gabia-otel-poc` (ClusterIP) on its
+# named ports instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gabia-otel-poc-otlp
+  namespace: operator-lab
+spec:
+  type: NodePort
+  selector:
+    app: gabia-otel-poc
+  ports:
+    - name: otlp-traces
+      port: 21890
+      targetPort: 21890
+      nodePort: 31890
+      protocol: TCP
+    - name: otlp-metrics
+      port: 21891
+      targetPort: 21891
+      nodePort: 31891
+      protocol: TCP
+    - name: otlp-logs
+      port: 21892
+      targetPort: 21892
+      nodePort: 31892
+      protocol: TCP

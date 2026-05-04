@@ -4,6 +4,13 @@ metadata:
   labels:
     app.kubernetes.io/name: dataprepper-operator
     app.kubernetes.io/managed-by: kustomize
-  name: dataprepperclass-sample
+  name: dataprepper-2-15
 spec:
-  # TODO(user): Add fields here
+  image: opensearchproject/data-prepper:2.15.0
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

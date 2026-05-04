@@ -1,0 +1,17 @@
+# data-prepper-config.yaml content for the DataPrepper server itself
+# (NOT the pipelines). Mounted at /usr/share/data-prepper/config/data-prepper-config.yaml
+# via spec.serverConfigMap on the DataPrepperCluster.
+#
+# discovery_mode: local_node disables peer-forwarder cluster discovery, which is
+# required when running a single replica - otherwise DataPrepper tries to bind
+# the peer-forwarder server port and fails with "Address already in use".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dataprepper-config
+  namespace: operator-lab
+data:
+  data-prepper-config.yaml: |
+    ssl: false
+    peer_forwarder:
+      discovery_mode: local_node
