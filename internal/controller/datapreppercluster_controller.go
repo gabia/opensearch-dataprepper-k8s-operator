@@ -281,7 +281,9 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 			},
 		},
 	}
-	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
 
 	existing := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
@@ -313,14 +315,25 @@ func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, clu
 			},
 		},
 	}
-	ctrl.SetControllerReference(cluster, desired, r.Scheme)
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
 
 	existing := &corev1.Service{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if errors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if !apiequality.Semantic.DeepEqual(existing.Spec.Ports, desired.Spec.Ports) ||
+		!apiequality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) {
+		existing.Spec.Ports = desired.Spec.Ports
+		existing.Spec.Selector = desired.Spec.Selector
+		return r.Update(ctx, existing)
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

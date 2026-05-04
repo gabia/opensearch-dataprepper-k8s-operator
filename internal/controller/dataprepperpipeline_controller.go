@@ -38,9 +38,9 @@ import (
 )
 
 const (
-	pipelineFinalizer       = "dataprepper.gabia.com/pipeline-finalizer"
-	pipelinesHashAnnotation = "dataprepper.gabia.com/pipelines-hash"
-	pipelinesConfigMapKey   = "pipelines.yaml"
+	pipelineFinalizer        = "dataprepper.gabia.com/pipeline-finalizer"
+	pipelinesHashAnnotation  = "dataprepper.gabia.com/pipelines-hash"
+	pipelinesConfigMapKey    = "pipelines.yaml"
 	pipelinesConfigMapSuffix = "-pipelines"
 )
 
