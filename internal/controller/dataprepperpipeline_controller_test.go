@@ -73,7 +73,9 @@ var _ = Describe("DataPrepperPipeline Controller", func() {
 			for _, obj := range []client.Object{
 				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: "default"}},
 				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: "default"}},
+				&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: clusterName + "-headless", Namespace: "default"}},
 				&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: clusterName + "-pipelines", Namespace: "default"}},
+				&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: clusterName + "-peer-config", Namespace: "default"}},
 			} {
 				_ = k8sClient.Delete(ctx, obj)
 			}

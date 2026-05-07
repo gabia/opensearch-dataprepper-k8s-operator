@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -60,15 +62,22 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cfg.Image, "classRef", cluster.Spec.ClassRef)
+	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cfg.Image, "classRef", cluster.Spec.ClassRef, "replicas", cluster.Spec.Replicas)
 
 	if err := r.reconcileConfigMap(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.reconcileDeployment(ctx, cluster, cfg); err != nil {
+	peerHash, err := r.reconcilePeerConfig(ctx, cluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.reconcileDeployment(ctx, cluster, cfg, peerHash); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileService(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.reconcileHeadlessService(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileServiceMonitor(ctx, cluster); err != nil {
@@ -224,7 +233,7 @@ func (r *DataPrepperClusterReconciler) reconcileConfigMap(ctx context.Context, c
 	return r.Create(ctx, desired)
 }
 
-func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster, cfg *resolvedConfig) error {
+func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster, cfg *resolvedConfig, peerHash string) error {
 	replicas := cluster.Spec.Replicas
 
 	ports := append([]corev1.ContainerPort{
@@ -262,24 +271,31 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 		})
 	}
 
-	if cluster.Spec.ServerConfigMap != "" {
-		volumes = append(volumes, corev1.Volume{
-			Name: "server-config",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: cluster.Spec.ServerConfigMap},
-				},
-			},
-		})
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "server-config",
-			MountPath: "/usr/share/data-prepper/config/data-prepper-config.yaml",
-			SubPath:   "data-prepper-config.yaml",
-		})
+	serverConfigMapName := cluster.Spec.ServerConfigMap
+	if serverConfigMapName == "" {
+		serverConfigMapName = peerConfigMapName(cluster)
 	}
+	volumes = append(volumes, corev1.Volume{
+		Name: "server-config",
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: serverConfigMapName},
+			},
+		},
+	})
+	volumeMounts = append(volumeMounts, corev1.VolumeMount{
+		Name:      "server-config",
+		MountPath: "/usr/share/data-prepper/config/data-prepper-config.yaml",
+		SubPath:   "data-prepper-config.yaml",
+	})
 
 	volumes = append(volumes, cluster.Spec.ExtraVolumes...)
 	volumeMounts = append(volumeMounts, cluster.Spec.ExtraVolumeMounts...)
+
+	podAnnotations := map[string]string{}
+	if peerHash != "" {
+		podAnnotations[peerConfigHashAnnotation] = peerHash
+	}
 
 	desired := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -293,7 +309,8 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": cluster.Name},
+					Labels:      map[string]string{"app": cluster.Name},
+					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
@@ -327,6 +344,14 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 		return err
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
+	if existing.Spec.Template.Annotations == nil {
+		existing.Spec.Template.Annotations = map[string]string{}
+	}
+	if peerHash != "" {
+		existing.Spec.Template.Annotations[peerConfigHashAnnotation] = peerHash
+	} else {
+		delete(existing.Spec.Template.Annotations, peerConfigHashAnnotation)
+	}
 	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
 	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
@@ -382,6 +407,111 @@ func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, clu
 		return r.Update(ctx, existing)
 	}
 	return nil
+}
+
+const peerConfigHashAnnotation = "dataprepper.gabia.com/peer-config-hash"
+
+func peerConfigMapName(cluster *dataprepperv1alpha1.DataPrepperCluster) string {
+	return cluster.Name + "-peer-config"
+}
+
+func headlessServiceName(cluster *dataprepperv1alpha1.DataPrepperCluster) string {
+	return cluster.Name + "-headless"
+}
+
+// renderPeerConfig builds the data-prepper-config.yaml content for a cluster.
+// Single-replica clusters use local_node to skip peer-forwarder bind. Multi-
+// replica clusters use dns discovery against the headless Service so peers
+// resolve each other through Kubernetes DNS.
+func renderPeerConfig(cluster *dataprepperv1alpha1.DataPrepperCluster) string {
+	if cluster.Spec.Replicas <= 1 {
+		return "ssl: false\npeer_forwarder:\n  discovery_mode: local_node\n"
+	}
+	domain := fmt.Sprintf("%s.%s.svc.cluster.local", headlessServiceName(cluster), cluster.Namespace)
+	return fmt.Sprintf(
+		"ssl: false\npeer_forwarder:\n  discovery_mode: dns\n  domain_name: %s\n  ssl: false\n",
+		domain,
+	)
+}
+
+// reconcilePeerConfig manages an operator-owned ConfigMap holding
+// data-prepper-config.yaml when the user has not provided spec.serverConfigMap.
+// Returns the content hash so the Deployment can roll on changes.
+func (r *DataPrepperClusterReconciler) reconcilePeerConfig(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) (string, error) {
+	cmName := peerConfigMapName(cluster)
+	existing := &corev1.ConfigMap{}
+	getErr := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: cmName}, existing)
+
+	if cluster.Spec.ServerConfigMap != "" {
+		if errors.IsNotFound(getErr) {
+			return "", nil
+		}
+		if getErr != nil {
+			return "", getErr
+		}
+		return "", r.Delete(ctx, existing)
+	}
+
+	content := renderPeerConfig(cluster)
+	hash := sha256.Sum256([]byte(content))
+	hashStr := hex.EncodeToString(hash[:])[:16]
+
+	desired := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: cmName, Namespace: cluster.Namespace},
+		Data:       map[string]string{"data-prepper-config.yaml": content},
+	}
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return "", err
+	}
+	if errors.IsNotFound(getErr) {
+		return hashStr, r.Create(ctx, desired)
+	}
+	if getErr != nil {
+		return "", getErr
+	}
+	if existing.Data["data-prepper-config.yaml"] == content {
+		return hashStr, nil
+	}
+	existing.Data = desired.Data
+	return hashStr, r.Update(ctx, existing)
+}
+
+// reconcileHeadlessService keeps a clusterIP=None Service so DataPrepper peers
+// can resolve each other via DNS in multi-replica deployments. The Service
+// always exists (the cost is negligible) so a 1->N replicas change does not
+// require additional plumbing.
+func (r *DataPrepperClusterReconciler) reconcileHeadlessService(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      headlessServiceName(cluster),
+			Namespace: cluster.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP:                "None",
+			PublishNotReadyAddresses: true,
+			Selector:                 map[string]string{"app": cluster.Name},
+		},
+	}
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	existing := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if errors.IsNotFound(err) {
+		return r.Create(ctx, desired)
+	}
+	if err != nil {
+		return err
+	}
+	if existing.Spec.ClusterIP == "None" &&
+		existing.Spec.PublishNotReadyAddresses == desired.Spec.PublishNotReadyAddresses &&
+		apiequality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) {
+		return nil
+	}
+	existing.Spec.PublishNotReadyAddresses = desired.Spec.PublishNotReadyAddresses
+	existing.Spec.Selector = desired.Spec.Selector
+	return r.Update(ctx, existing)
 }
 
 var serviceMonitorGVK = schema.GroupVersionKind{
