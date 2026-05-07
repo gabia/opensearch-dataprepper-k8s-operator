@@ -96,6 +96,9 @@ var _ = BeforeSuite(func() {
 	err = SetupDataPrepperPipelineWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = SetupDataPrepperClusterWebhookWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:webhook
 
 	go func() {

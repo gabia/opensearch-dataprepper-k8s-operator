@@ -10,6 +10,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-dataprepper-gabia-com-v1alpha1-datapreppercluster
+  failurePolicy: Fail
+  name: vdatapreppercluster-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - dataprepper.gabia.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataprepperclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-dataprepper-gabia-com-v1alpha1-dataprepperpipeline
   failurePolicy: Fail
   name: vdataprepperpipeline-v1alpha1.kb.io
