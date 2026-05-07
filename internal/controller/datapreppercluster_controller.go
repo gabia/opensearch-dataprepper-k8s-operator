@@ -43,7 +43,6 @@ type DataPrepperClusterReconciler struct {
 func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	// 1. DataPrepperCluster CR 가져오기
 	cluster := &dataprepperv1alpha1.DataPrepperCluster{}
 	if err := r.Get(ctx, req.NamespacedName, cluster); err != nil {
 		if errors.IsNotFound(err) {
@@ -52,7 +51,6 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	// 2. Resolve image/resources from optional DataPrepperClass
 	cfg, err := r.resolveConfig(ctx, cluster)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -60,22 +58,15 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	log.Info("Reconciling DataPrepperCluster", "name", cluster.Name, "image", cfg.Image, "classRef", cluster.Spec.ClassRef)
 
-	// 3. ConfigMap (파이프라인 설정 파일)
 	if err := r.reconcileConfigMap(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// 4. Deployment (DataPrepper Pod)
 	if err := r.reconcileDeployment(ctx, cluster, cfg); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// 5. Service (HTTP 포트 노출)
 	if err := r.reconcileService(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// 6. Status 업데이트
 	if err := r.reconcileStatus(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}

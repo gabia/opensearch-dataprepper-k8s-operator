@@ -53,7 +53,6 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	clusterRef := pipeline.Spec.ClusterRef
 
-	// Handle deletion via finalizer
 	if !pipeline.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(pipeline, pipelineFinalizer) {
 			log.Info("Pipeline being deleted, rebuilding cluster ConfigMap", "pipeline", pipeline.Name, "cluster", clusterRef)
@@ -66,7 +65,6 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	// Add finalizer if missing
 	if !controllerutil.ContainsFinalizer(pipeline, pipelineFinalizer) {
 		controllerutil.AddFinalizer(pipeline, pipelineFinalizer)
 		if err := r.Update(ctx, pipeline); err != nil {
@@ -75,7 +73,6 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	// Verify the referenced DataPrepperCluster exists
 	cluster := &dataprepperv1alpha1.DataPrepperCluster{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: pipeline.Namespace, Name: clusterRef}, cluster)
 	if errors.IsNotFound(err) {
