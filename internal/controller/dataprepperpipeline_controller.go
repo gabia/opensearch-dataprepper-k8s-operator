@@ -43,6 +43,7 @@ type DataPrepperPipelineReconciler struct {
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -81,7 +82,7 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 	err := r.Get(ctx, types.NamespacedName{Namespace: pipeline.Namespace, Name: clusterRef}, cluster)
 	if errors.IsNotFound(err) {
 		log.Info("Pipeline references missing cluster, marking Pending", "pipeline", pipeline.Name, "cluster", clusterRef)
-		return ctrl.Result{}, r.setStatus(ctx, pipeline, dataprepperv1alpha1.DataPrepperPipelinePhasePending)
+		return ctrl.Result{}, r.setStatus(ctx, pipeline, dataprepperv1alpha1.DataPrepperPipelinePhasePending, podHealth{})
 	}
 	if err != nil {
 		return ctrl.Result{}, err
@@ -91,27 +92,87 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.rebuildClusterConfig(ctx, pipeline.Namespace, clusterRef, ""); err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, r.setStatus(ctx, pipeline, dataprepperv1alpha1.DataPrepperPipelinePhaseApplied)
+	health := r.inspectClusterHealth(ctx, pipeline.Namespace, clusterRef)
+	return ctrl.Result{}, r.setStatus(ctx, pipeline, dataprepperv1alpha1.DataPrepperPipelinePhaseApplied, health)
 }
 
-func (r *DataPrepperPipelineReconciler) setStatus(ctx context.Context, pipeline *dataprepperv1alpha1.DataPrepperPipeline, phase dataprepperv1alpha1.DataPrepperPipelinePhase) error {
+type podHealth struct {
+	known   bool
+	healthy bool
+	reason  string
+	message string
+}
+
+func (r *DataPrepperPipelineReconciler) inspectClusterHealth(ctx context.Context, namespace, clusterName string) podHealth {
+	pods := &corev1.PodList{}
+	if err := r.List(ctx, pods,
+		client.InNamespace(namespace),
+		client.MatchingLabels{"app": clusterName},
+	); err != nil {
+		return podHealth{}
+	}
+	if len(pods.Items) == 0 {
+		return podHealth{known: true, reason: "NoPods", message: "no DataPrepper pods are scheduled"}
+	}
+	for _, pod := range pods.Items {
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Name != "data-prepper" {
+				continue
+			}
+			if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+				return podHealth{
+					known:   true,
+					reason:  cs.State.Waiting.Reason,
+					message: fmt.Sprintf("pod %s waiting: %s", pod.Name, cs.State.Waiting.Message),
+				}
+			}
+			if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+				return podHealth{
+					known:   true,
+					reason:  cs.State.Terminated.Reason,
+					message: fmt.Sprintf("pod %s terminated: %s", pod.Name, cs.State.Terminated.Message),
+				}
+			}
+		}
+	}
+	return podHealth{known: true, healthy: true, reason: "DataPrepperRunning", message: "all data-prepper containers running"}
+}
+
+func (r *DataPrepperPipelineReconciler) setStatus(ctx context.Context, pipeline *dataprepperv1alpha1.DataPrepperPipeline, phase dataprepperv1alpha1.DataPrepperPipelinePhase, health podHealth) error {
 	conditions := append([]metav1.Condition{}, pipeline.Status.Conditions...)
 	ready := phase == dataprepperv1alpha1.DataPrepperPipelinePhaseApplied
 
-	cond := metav1.Condition{
+	readyCond := metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: pipeline.Generation,
 	}
 	if ready {
-		cond.Status = metav1.ConditionTrue
-		cond.Reason = "PipelineApplied"
-		cond.Message = "pipeline content merged into cluster ConfigMap"
+		readyCond.Status = metav1.ConditionTrue
+		readyCond.Reason = "PipelineApplied"
+		readyCond.Message = "pipeline content merged into cluster ConfigMap"
 	} else {
-		cond.Reason = "ClusterNotFound"
-		cond.Message = fmt.Sprintf("cluster %q not found in namespace", pipeline.Spec.ClusterRef)
+		readyCond.Reason = "ClusterNotFound"
+		readyCond.Message = fmt.Sprintf("cluster %q not found in namespace", pipeline.Spec.ClusterRef)
 	}
-	meta.SetStatusCondition(&conditions, cond)
+	meta.SetStatusCondition(&conditions, readyCond)
+
+	if health.known {
+		healthyCond := metav1.Condition{
+			Type:               "Healthy",
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: pipeline.Generation,
+			Reason:             health.reason,
+			Message:            health.message,
+		}
+		if health.healthy {
+			healthyCond.Status = metav1.ConditionTrue
+		}
+		meta.SetStatusCondition(&conditions, healthyCond)
+	}
 
 	if pipeline.Status.Phase == phase &&
 		pipeline.Status.ObservedGeneration == pipeline.Generation &&
