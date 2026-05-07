@@ -156,7 +156,8 @@ func setCond(conds *[]metav1.Condition, generation int64, condType string, on bo
 // resolveConfig merges DataPrepperClass defaults (if classRef is set) with cluster spec overrides.
 func (r *DataPrepperClusterReconciler) resolveConfig(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) (*resolvedConfig, error) {
 	cfg := &resolvedConfig{
-		Image: cluster.Spec.Image,
+		Image:     cluster.Spec.Image,
+		Resources: cluster.Spec.Resources,
 	}
 	if cluster.Spec.ClassRef != "" {
 		class := &dataprepperv1alpha1.DataPrepperClass{}
@@ -166,12 +167,18 @@ func (r *DataPrepperClusterReconciler) resolveConfig(ctx context.Context, cluste
 		if cfg.Image == "" {
 			cfg.Image = class.Spec.Image
 		}
-		cfg.Resources = class.Spec.Resources
+		if isEmptyResources(cfg.Resources) {
+			cfg.Resources = class.Spec.Resources
+		}
 	}
 	if cfg.Image == "" {
 		return nil, fmt.Errorf("either spec.image or spec.classRef must be set")
 	}
 	return cfg, nil
+}
+
+func isEmptyResources(r corev1.ResourceRequirements) bool {
+	return len(r.Requests) == 0 && len(r.Limits) == 0 && len(r.Claims) == 0
 }
 
 // defaultPipelineYaml is the placeholder pipeline used until a DataPrepperPipeline CR is created.

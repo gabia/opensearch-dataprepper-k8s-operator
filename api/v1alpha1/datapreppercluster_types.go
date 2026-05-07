@@ -23,6 +23,11 @@ type DataPrepperClusterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	Replicas int32 `json:"replicas"`
 
+	// resources are the compute resource requirements for the DataPrepper container.
+	// When set, these override the resources defined on the referenced DataPrepperClass.
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
 	// serverConfigMap is the name of a ConfigMap (in the same namespace) holding
 	// a single key 'data-prepper-config.yaml'. When set, the operator mounts that
 	// key over /usr/share/data-prepper/config/data-prepper-config.yaml via subPath.
