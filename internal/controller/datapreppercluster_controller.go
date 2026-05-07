@@ -244,11 +244,14 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:         "data-prepper",
-							Image:        cfg.Image,
-							Resources:    cfg.Resources,
-							Ports:        ports,
-							VolumeMounts: volumeMounts,
+							Name:           "data-prepper",
+							Image:          cfg.Image,
+							Resources:      cfg.Resources,
+							Ports:          ports,
+							VolumeMounts:   volumeMounts,
+							StartupProbe:   tcpProbe(0, 10, 30),
+							LivenessProbe:  tcpProbe(0, 20, 3),
+							ReadinessProbe: tcpProbe(5, 10, 3),
 						},
 					},
 					Volumes: volumes,
@@ -273,8 +276,22 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
 	existing.Spec.Template.Spec.Containers[0].VolumeMounts = desired.Spec.Template.Spec.Containers[0].VolumeMounts
+	existing.Spec.Template.Spec.Containers[0].StartupProbe = desired.Spec.Template.Spec.Containers[0].StartupProbe
+	existing.Spec.Template.Spec.Containers[0].LivenessProbe = desired.Spec.Template.Spec.Containers[0].LivenessProbe
+	existing.Spec.Template.Spec.Containers[0].ReadinessProbe = desired.Spec.Template.Spec.Containers[0].ReadinessProbe
 	existing.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
 	return r.Update(ctx, existing)
+}
+
+func tcpProbe(initialDelay, period int32, failureThreshold int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromString("http")},
+		},
+		InitialDelaySeconds: initialDelay,
+		PeriodSeconds:       period,
+		FailureThreshold:    failureThreshold,
+	}
 }
 
 func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
