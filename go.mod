@@ -1,4 +1,4 @@
-module github.com/pkeugine/dataprepper-operator
+module github.com/gabia/dataprepper-operator
 
 go 1.25.3
 

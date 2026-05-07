@@ -2,9 +2,8 @@
 
 A Kubernetes operator for [OpenSearch Data Prepper](https://github.com/opensearch-project/data-prepper) — manage DataPrepper instances and their pipelines as native Kubernetes resources, with hot pipeline updates and no manual config-map plumbing.
 
-[![Tests](https://github.com/pkeugine/dataprepper-operator/actions/workflows/test.yml/badge.svg)](https://github.com/pkeugine/dataprepper-operator/actions/workflows/test.yml)
-[![Lint](https://github.com/pkeugine/dataprepper-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/pkeugine/dataprepper-operator/actions/workflows/lint.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Tests](https://github.com/gabia/dataprepper-operator/actions/workflows/test.yml/badge.svg)](https://github.com/gabia/dataprepper-operator/actions/workflows/test.yml)
+[![Lint](https://github.com/gabia/dataprepper-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/gabia/dataprepper-operator/actions/workflows/lint.yml)
 
 ## Why
 
@@ -136,7 +135,3 @@ See [`AGENTS.md`](./AGENTS.md) for the project layout and rules around generated
 ## Project status
 
 Alpha (`v1alpha1`). API may change. The operator is in active PoC use against a single-node cluster ingesting OTLP traffic from a real otel-collector into OpenSearch.
-
-## License
-
-Apache License 2.0. See [`LICENSE`](./LICENSE).

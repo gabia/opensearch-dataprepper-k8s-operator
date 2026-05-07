@@ -7,7 +7,7 @@ domain: gabia.com
 layout:
 - go.kubebuilder.io/v4
 projectName: dataprepper-operator
-repo: github.com/pkeugine/dataprepper-operator
+repo: github.com/gabia/dataprepper-operator
 resources:
 - api:
     crdVersion: v1
@@ -16,7 +16,7 @@ resources:
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperCluster
-  path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/dataprepper-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -25,13 +25,13 @@ resources:
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperPipeline
-  path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/dataprepper-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperClass
-  path: github.com/pkeugine/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/dataprepper-operator/api/v1alpha1
   version: v1alpha1
 version: "3"
