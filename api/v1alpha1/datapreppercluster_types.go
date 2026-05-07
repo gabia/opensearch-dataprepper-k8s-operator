@@ -64,6 +64,32 @@ type DataPrepperClusterSpec struct {
 	// metrics configures observability for the cluster.
 	// +optional
 	Metrics *MetricsSpec `json:"metrics,omitempty"`
+
+	// autoscaling reconciles a HorizontalPodAutoscaler against the cluster's
+	// Deployment. When set, spec.replicas is used as the initial replica count
+	// only; the HPA owns the running value afterwards.
+	// +optional
+	Autoscaling *AutoscalingSpec `json:"autoscaling,omitempty"`
+}
+
+// AutoscalingSpec configures a HorizontalPodAutoscaler for a DataPrepperCluster.
+type AutoscalingSpec struct {
+	// minReplicas is the lower bound of replicas the autoscaler may scale to.
+	// Defaults to 1 when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	MinReplicas *int32 `json:"minReplicas,omitempty"`
+
+	// maxReplicas is the upper bound of replicas the autoscaler may scale to.
+	// +kubebuilder:validation:Minimum=1
+	MaxReplicas int32 `json:"maxReplicas"`
+
+	// targetCPUUtilizationPercentage triggers scaling when the average CPU
+	// utilization across pods exceeds this percentage. Defaults to 70.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	TargetCPUUtilizationPercentage *int32 `json:"targetCPUUtilizationPercentage,omitempty"`
 }
 
 // MetricsSpec configures observability features for a DataPrepperCluster.

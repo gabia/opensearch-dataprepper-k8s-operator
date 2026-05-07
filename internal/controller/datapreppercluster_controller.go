@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,6 +50,7 @@ type DataPrepperClusterReconciler struct {
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 
 func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -86,6 +88,9 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileServiceMonitor(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.reconcileHPA(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileStatus(ctx, cluster); err != nil {
@@ -359,7 +364,9 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	existing.Spec.Replicas = desired.Spec.Replicas
+	if cluster.Spec.Autoscaling == nil {
+		existing.Spec.Replicas = desired.Spec.Replicas
+	}
 	existing.Spec.Template.Labels = desired.Spec.Template.Labels
 	existing.Spec.Template.Annotations = desired.Spec.Template.Annotations
 	existing.Spec.Template.Spec.NodeSelector = desired.Spec.Template.Spec.NodeSelector
@@ -539,6 +546,67 @@ func (r *DataPrepperClusterReconciler) reconcileHeadlessService(ctx context.Cont
 	return r.Update(ctx, existing)
 }
 
+// reconcileHPA creates, updates, or deletes a HorizontalPodAutoscaler driven
+// by spec.autoscaling. The HPA targets the cluster's Deployment by name.
+func (r *DataPrepperClusterReconciler) reconcileHPA(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	hpaKey := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	existing := &autoscalingv2.HorizontalPodAutoscaler{}
+	getErr := r.Get(ctx, hpaKey, existing)
+
+	if cluster.Spec.Autoscaling == nil {
+		if errors.IsNotFound(getErr) {
+			return nil
+		}
+		if getErr != nil {
+			return getErr
+		}
+		return r.Delete(ctx, existing)
+	}
+
+	as := cluster.Spec.Autoscaling
+	cpuTarget := int32(70)
+	if as.TargetCPUUtilizationPercentage != nil {
+		cpuTarget = *as.TargetCPUUtilizationPercentage
+	}
+	desired := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Name: cluster.Name, Namespace: cluster.Namespace},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       cluster.Name,
+			},
+			MinReplicas: as.MinReplicas,
+			MaxReplicas: as.MaxReplicas,
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricSource{
+					Name: corev1.ResourceCPU,
+					Target: autoscalingv2.MetricTarget{
+						Type:               autoscalingv2.UtilizationMetricType,
+						AverageUtilization: &cpuTarget,
+					},
+				},
+			}},
+		},
+	}
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	if errors.IsNotFound(getErr) {
+		return r.Create(ctx, desired)
+	}
+	if getErr != nil {
+		return getErr
+	}
+	if apiequality.Semantic.DeepEqual(existing.Spec, desired.Spec) {
+		return nil
+	}
+	existing.Spec = desired.Spec
+	return r.Update(ctx, existing)
+}
+
 var serviceMonitorGVK = schema.GroupVersionKind{
 	Group:   "monitoring.coreos.com",
 	Version: "v1",
@@ -619,6 +687,7 @@ func (r *DataPrepperClusterReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
+		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Named("datapreppercluster").
 		Complete(r)
 }

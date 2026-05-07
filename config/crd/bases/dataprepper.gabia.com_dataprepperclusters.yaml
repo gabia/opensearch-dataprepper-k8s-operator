@@ -62,6 +62,36 @@ spec:
                   entries are mounted into /usr/share/data-prepper/assets/. Use this for
                   index templates and ISM policy JSON files referenced from pipeline YAML.
                 type: string
+              autoscaling:
+                description: |-
+                  autoscaling reconciles a HorizontalPodAutoscaler against the cluster's
+                  Deployment. When set, spec.replicas is used as the initial replica count
+                  only; the HPA owns the running value afterwards.
+                properties:
+                  maxReplicas:
+                    description: maxReplicas is the upper bound of replicas the autoscaler
+                      may scale to.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  minReplicas:
+                    description: |-
+                      minReplicas is the lower bound of replicas the autoscaler may scale to.
+                      Defaults to 1 when unset.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  targetCPUUtilizationPercentage:
+                    description: |-
+                      targetCPUUtilizationPercentage triggers scaling when the average CPU
+                      utilization across pods exceeds this percentage. Defaults to 70.
+                    format: int32
+                    maximum: 100
+                    minimum: 1
+                    type: integer
+                required:
+                - maxReplicas
+                type: object
               classRef:
                 description: |-
                   classRef is the name of a DataPrepperClass to use as a template.
