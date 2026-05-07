@@ -2,9 +2,6 @@
 
 A Kubernetes operator for [OpenSearch Data Prepper](https://github.com/opensearch-project/data-prepper) — manage DataPrepper instances and their pipelines as native Kubernetes resources, with hot pipeline updates and no manual config-map plumbing.
 
-[![Tests](https://github.com/gabia/dataprepper-operator/actions/workflows/test.yml/badge.svg)](https://github.com/gabia/dataprepper-operator/actions/workflows/test.yml)
-[![Lint](https://github.com/gabia/dataprepper-operator/actions/workflows/lint.yml/badge.svg)](https://github.com/gabia/dataprepper-operator/actions/workflows/lint.yml)
-
 ## Why
 
 Stock DataPrepper bundles all of its routing, processing, and sink configuration into a single `pipelines.yaml`. Adding or modifying any pipeline in production typically means editing that file and restarting the process — losing in-flight data, briefly halting telemetry ingest, and coordinating the change manually across replicas.
