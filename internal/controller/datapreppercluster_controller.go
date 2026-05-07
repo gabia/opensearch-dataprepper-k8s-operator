@@ -297,6 +297,7 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 							Resources:      cfg.Resources,
 							Ports:          ports,
 							VolumeMounts:   volumeMounts,
+							EnvFrom:        cluster.Spec.EnvFrom,
 							StartupProbe:   tcpProbe(0, 10, 30),
 							LivenessProbe:  tcpProbe(0, 20, 3),
 							ReadinessProbe: tcpProbe(5, 10, 3),
@@ -324,6 +325,7 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
 	existing.Spec.Template.Spec.Containers[0].VolumeMounts = desired.Spec.Template.Spec.Containers[0].VolumeMounts
+	existing.Spec.Template.Spec.Containers[0].EnvFrom = desired.Spec.Template.Spec.Containers[0].EnvFrom
 	existing.Spec.Template.Spec.Containers[0].StartupProbe = desired.Spec.Template.Spec.Containers[0].StartupProbe
 	existing.Spec.Template.Spec.Containers[0].LivenessProbe = desired.Spec.Template.Spec.Containers[0].LivenessProbe
 	existing.Spec.Template.Spec.Containers[0].ReadinessProbe = desired.Spec.Template.Spec.Containers[0].ReadinessProbe

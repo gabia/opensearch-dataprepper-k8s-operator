@@ -54,6 +54,12 @@ type DataPrepperClusterSpec struct {
 	// merged with the operator-managed http (4900) port.
 	// +optional
 	ExtraPorts []corev1.ContainerPort `json:"extraPorts,omitempty"`
+
+	// envFrom populates environment variables in the data-prepper container from
+	// ConfigMaps or Secrets. Use this to inject sink credentials or other values
+	// that pipeline YAML references via ${VAR_NAME} substitution.
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 }
 
 // DataPrepperClusterPhase represents the high-level state of a DataPrepperCluster.
