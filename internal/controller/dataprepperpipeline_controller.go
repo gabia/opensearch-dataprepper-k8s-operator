@@ -4,11 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -91,11 +95,32 @@ func (r *DataPrepperPipelineReconciler) Reconcile(ctx context.Context, req ctrl.
 }
 
 func (r *DataPrepperPipelineReconciler) setStatus(ctx context.Context, pipeline *dataprepperv1alpha1.DataPrepperPipeline, phase dataprepperv1alpha1.DataPrepperPipelinePhase) error {
-	if pipeline.Status.Phase == phase && pipeline.Status.ObservedGeneration == pipeline.Generation {
+	conditions := append([]metav1.Condition{}, pipeline.Status.Conditions...)
+	ready := phase == dataprepperv1alpha1.DataPrepperPipelinePhaseApplied
+
+	cond := metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: pipeline.Generation,
+	}
+	if ready {
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = "PipelineApplied"
+		cond.Message = "pipeline content merged into cluster ConfigMap"
+	} else {
+		cond.Reason = "ClusterNotFound"
+		cond.Message = fmt.Sprintf("cluster %q not found in namespace", pipeline.Spec.ClusterRef)
+	}
+	meta.SetStatusCondition(&conditions, cond)
+
+	if pipeline.Status.Phase == phase &&
+		pipeline.Status.ObservedGeneration == pipeline.Generation &&
+		apiequality.Semantic.DeepEqual(pipeline.Status.Conditions, conditions) {
 		return nil
 	}
 	pipeline.Status.Phase = phase
 	pipeline.Status.ObservedGeneration = pipeline.Generation
+	pipeline.Status.Conditions = conditions
 	return r.Status().Update(ctx, pipeline)
 }
 

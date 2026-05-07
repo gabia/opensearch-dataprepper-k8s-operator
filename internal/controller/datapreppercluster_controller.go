@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -91,25 +92,65 @@ func (r *DataPrepperClusterReconciler) reconcileStatus(ctx context.Context, clus
 		}
 	}
 
+	ready := cluster.Spec.Replicas > 0 && deploy.Status.ReadyReplicas >= cluster.Spec.Replicas
+	degraded := deploy.Status.UnavailableReplicas > 0 && deploy.Status.ReadyReplicas == 0
+	progressing := deploy.Generation != deploy.Status.ObservedGeneration ||
+		(deploy.Spec.Replicas != nil && deploy.Status.UpdatedReplicas < *deploy.Spec.Replicas)
+
 	phase := dataprepperv1alpha1.DataPrepperClusterPhasePending
-	if deploy.Status.ReadyReplicas >= cluster.Spec.Replicas && cluster.Spec.Replicas > 0 {
+	switch {
+	case ready:
 		phase = dataprepperv1alpha1.DataPrepperClusterPhaseReady
-	} else if deploy.Status.UnavailableReplicas > 0 && deploy.Status.ReadyReplicas == 0 {
+	case degraded:
 		phase = dataprepperv1alpha1.DataPrepperClusterPhaseDegraded
 	}
+
+	conditions := append([]metav1.Condition{}, cluster.Status.Conditions...)
+	setCond(&conditions, cluster.Generation, "Ready", ready,
+		map[bool]string{true: "DeploymentAvailable", false: "DeploymentUnavailable"},
+		map[bool]string{
+			true:  fmt.Sprintf("%d/%d replicas ready", deploy.Status.ReadyReplicas, cluster.Spec.Replicas),
+			false: fmt.Sprintf("%d/%d replicas ready", deploy.Status.ReadyReplicas, cluster.Spec.Replicas),
+		})
+	setCond(&conditions, cluster.Generation, "Progressing", progressing,
+		map[bool]string{true: "RolloutInProgress", false: "RolloutComplete"},
+		map[bool]string{
+			true:  fmt.Sprintf("rollout updating: %d/%d replicas updated", deploy.Status.UpdatedReplicas, cluster.Spec.Replicas),
+			false: "deployment matches desired generation",
+		})
+	setCond(&conditions, cluster.Generation, "Degraded", degraded,
+		map[bool]string{true: "AllReplicasUnavailable", false: "ReplicasAvailable"},
+		map[bool]string{
+			true:  fmt.Sprintf("%d unavailable replicas, none ready", deploy.Status.UnavailableReplicas),
+			false: "at least one replica ready",
+		})
 
 	desired := dataprepperv1alpha1.DataPrepperClusterStatus{
 		Phase:              phase,
 		ReadyReplicas:      deploy.Status.ReadyReplicas,
 		Pipelines:          pipelineCount,
 		ObservedGeneration: cluster.Generation,
-		Conditions:         cluster.Status.Conditions,
+		Conditions:         conditions,
 	}
 	if apiequality.Semantic.DeepEqual(cluster.Status, desired) {
 		return nil
 	}
 	cluster.Status = desired
 	return r.Status().Update(ctx, cluster)
+}
+
+func setCond(conds *[]metav1.Condition, generation int64, condType string, on bool, reasons, messages map[bool]string) {
+	status := metav1.ConditionFalse
+	if on {
+		status = metav1.ConditionTrue
+	}
+	meta.SetStatusCondition(conds, metav1.Condition{
+		Type:               condType,
+		Status:             status,
+		Reason:             reasons[on],
+		Message:            messages[on],
+		ObservedGeneration: generation,
+	})
 }
 
 // resolveConfig merges DataPrepperClass defaults (if classRef is set) with cluster spec overrides.
