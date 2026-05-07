@@ -75,16 +75,17 @@ spec:
                     minimum: 1
                     type: integer
                   minReplicas:
-                    description: |-
-                      minReplicas is the lower bound of replicas the autoscaler may scale to.
-                      Defaults to 1 when unset.
+                    default: 1
+                    description: minReplicas is the lower bound of replicas the autoscaler
+                      may scale to.
                     format: int32
                     minimum: 1
                     type: integer
                   targetCPUUtilizationPercentage:
+                    default: 70
                     description: |-
                       targetCPUUtilizationPercentage triggers scaling when the average CPU
-                      utilization across pods exceeds this percentage. Defaults to 70.
+                      utilization across pods exceeds this percentage.
                     format: int32
                     maximum: 100
                     minimum: 1

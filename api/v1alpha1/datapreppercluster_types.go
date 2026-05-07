@@ -75,8 +75,8 @@ type DataPrepperClusterSpec struct {
 // AutoscalingSpec configures a HorizontalPodAutoscaler for a DataPrepperCluster.
 type AutoscalingSpec struct {
 	// minReplicas is the lower bound of replicas the autoscaler may scale to.
-	// Defaults to 1 when unset.
 	// +optional
+	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
 	MinReplicas *int32 `json:"minReplicas,omitempty"`
 
@@ -85,8 +85,9 @@ type AutoscalingSpec struct {
 	MaxReplicas int32 `json:"maxReplicas"`
 
 	// targetCPUUtilizationPercentage triggers scaling when the average CPU
-	// utilization across pods exceeds this percentage. Defaults to 70.
+	// utilization across pods exceeds this percentage.
 	// +optional
+	// +kubebuilder:default=70
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=100
 	TargetCPUUtilizationPercentage *int32 `json:"targetCPUUtilizationPercentage,omitempty"`
