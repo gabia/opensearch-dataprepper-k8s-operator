@@ -1,0 +1,23 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperPipeline
+metadata:
+  name: secured-pipeline
+  namespace: operator-lab
+spec:
+  clusterRef: secured-prepper
+  pipelineYaml: |
+    auth-demo:
+      source:
+        http:
+          port: 2021
+      sink:
+        - opensearch:
+            hosts:
+              - https://opensearch-cluster-master.opensearch-system:9200
+            index: demo-secured
+            # DataPrepper resolves ${OS_USER} / ${OS_PASSWORD} from the
+            # container environment (populated via spec.envFrom on the
+            # cluster).
+            username: ${OS_USER}
+            password: ${OS_PASSWORD}
+            insecure: true

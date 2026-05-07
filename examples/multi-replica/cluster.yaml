@@ -1,0 +1,12 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: ha-prepper
+  namespace: operator-lab
+spec:
+  image: opensearchproject/data-prepper:2.15.0
+  replicas: 3
+  # No spec.serverConfigMap is set, so the operator manages the
+  # data-prepper-config.yaml itself. Because replicas > 1, the generated
+  # config uses peer_forwarder.discovery_mode: dns pointed at the
+  # operator-managed headless Service ha-prepper-headless.

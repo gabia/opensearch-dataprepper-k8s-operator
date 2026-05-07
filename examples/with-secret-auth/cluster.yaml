@@ -1,0 +1,13 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: secured-prepper
+  namespace: operator-lab
+spec:
+  image: opensearchproject/data-prepper:2.15.0
+  replicas: 1
+  envFrom:
+    # Every key in the Secret becomes an env var on the data-prepper
+    # container. Pipelines can reference them with ${VAR_NAME}.
+    - secretRef:
+        name: opensearch-credentials

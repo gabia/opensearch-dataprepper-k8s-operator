@@ -1,0 +1,21 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: monitored-prepper
+  namespace: operator-lab
+spec:
+  image: opensearchproject/data-prepper:2.15.0
+  replicas: 2
+
+  metrics:
+    # Reconciles a Prometheus Operator ServiceMonitor pointing at
+    # /metrics/prometheus on port 4900. Silently skipped when the
+    # ServiceMonitor CRD is not installed.
+    serviceMonitor: true
+
+  autoscaling:
+    # The HPA owns the running replica count once this is set;
+    # spec.replicas above is only the initial value.
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70

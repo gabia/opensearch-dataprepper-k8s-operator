@@ -1,0 +1,23 @@
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperClass
+metadata:
+  name: gabia-otel-standard
+spec:
+  image: opensearchproject/data-prepper:2.15.0
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  podLabels:
+    team: observability
+    cost-center: data-platform
+  nodeSelector:
+    workload-type: data-pipeline
+  tolerations:
+    - key: workload-type
+      operator: Equal
+      value: data-pipeline
+      effect: NoSchedule

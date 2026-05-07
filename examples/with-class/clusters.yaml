@@ -1,0 +1,28 @@
+# Two clusters share the same template. Each only has to declare the
+# things that differ from the class default.
+---
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: traces-prepper
+  namespace: operator-lab
+spec:
+  classRef: gabia-otel-standard
+  replicas: 1
+---
+apiVersion: dataprepper.gabia.com/v1alpha1
+kind: DataPrepperCluster
+metadata:
+  name: logs-prepper
+  namespace: operator-lab
+spec:
+  classRef: gabia-otel-standard
+  replicas: 2
+  resources:
+    # Logs throughput is heavier than traces, so override memory only.
+    requests:
+      cpu: 200m
+      memory: 4Gi
+    limits:
+      cpu: "2"
+      memory: 8Gi
