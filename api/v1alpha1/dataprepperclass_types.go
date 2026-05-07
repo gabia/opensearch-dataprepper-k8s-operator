@@ -15,6 +15,30 @@ type DataPrepperClassSpec struct {
 	// using this class. Individual DataPrepperCluster resources may override.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// envFrom is the default set of environment variable sources for clusters
+	// using this class. Cluster.spec.envFrom replaces this when set.
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// nodeSelector schedules generated pods onto matching nodes.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// tolerations allow pods using this class to schedule on tainted nodes.
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// podLabels are merged into the labels of every pod generated for clusters
+	// using this class. Operator-managed labels are not overridden.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// podAnnotations are merged into the annotations of every pod generated
+	// for clusters using this class. Operator-managed annotations win on key
+	// collision.
+	// +optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 }
 
 // +kubebuilder:object:root=true

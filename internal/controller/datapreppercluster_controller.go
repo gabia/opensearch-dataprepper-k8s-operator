@@ -27,8 +27,13 @@ import (
 // resolvedConfig is the effective configuration after merging DataPrepperClass defaults
 // with DataPrepperCluster overrides.
 type resolvedConfig struct {
-	Image     string
-	Resources corev1.ResourceRequirements
+	Image          string
+	Resources      corev1.ResourceRequirements
+	EnvFrom        []corev1.EnvFromSource
+	NodeSelector   map[string]string
+	Tolerations    []corev1.Toleration
+	PodLabels      map[string]string
+	PodAnnotations map[string]string
 }
 
 // DataPrepperClusterReconciler reconciles a DataPrepperCluster object
@@ -173,6 +178,7 @@ func (r *DataPrepperClusterReconciler) resolveConfig(ctx context.Context, cluste
 	cfg := &resolvedConfig{
 		Image:     cluster.Spec.Image,
 		Resources: cluster.Spec.Resources,
+		EnvFrom:   cluster.Spec.EnvFrom,
 	}
 	if cluster.Spec.ClassRef != "" {
 		class := &dataprepperv1alpha1.DataPrepperClass{}
@@ -185,6 +191,13 @@ func (r *DataPrepperClusterReconciler) resolveConfig(ctx context.Context, cluste
 		if isEmptyResources(cfg.Resources) {
 			cfg.Resources = class.Spec.Resources
 		}
+		if len(cfg.EnvFrom) == 0 {
+			cfg.EnvFrom = class.Spec.EnvFrom
+		}
+		cfg.NodeSelector = class.Spec.NodeSelector
+		cfg.Tolerations = class.Spec.Tolerations
+		cfg.PodLabels = class.Spec.PodLabels
+		cfg.PodAnnotations = class.Spec.PodAnnotations
 	}
 	if cfg.Image == "" {
 		return nil, fmt.Errorf("either spec.image or spec.classRef must be set")
@@ -292,7 +305,8 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	volumes = append(volumes, cluster.Spec.ExtraVolumes...)
 	volumeMounts = append(volumeMounts, cluster.Spec.ExtraVolumeMounts...)
 
-	podAnnotations := map[string]string{}
+	podLabels := mergeStringMap(cfg.PodLabels, map[string]string{"app": cluster.Name})
+	podAnnotations := mergeStringMap(cfg.PodAnnotations, nil)
 	if peerHash != "" {
 		podAnnotations[peerConfigHashAnnotation] = peerHash
 	}
@@ -309,10 +323,12 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      map[string]string{"app": cluster.Name},
+					Labels:      podLabels,
 					Annotations: podAnnotations,
 				},
 				Spec: corev1.PodSpec{
+					NodeSelector: cfg.NodeSelector,
+					Tolerations:  cfg.Tolerations,
 					Containers: []corev1.Container{
 						{
 							Name:           "data-prepper",
@@ -320,7 +336,7 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 							Resources:      cfg.Resources,
 							Ports:          ports,
 							VolumeMounts:   volumeMounts,
-							EnvFrom:        cluster.Spec.EnvFrom,
+							EnvFrom:        cfg.EnvFrom,
 							StartupProbe:   tcpProbe(0, 10, 30),
 							LivenessProbe:  tcpProbe(0, 20, 3),
 							ReadinessProbe: tcpProbe(5, 10, 3),
@@ -344,14 +360,10 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 		return err
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if existing.Spec.Template.Annotations == nil {
-		existing.Spec.Template.Annotations = map[string]string{}
-	}
-	if peerHash != "" {
-		existing.Spec.Template.Annotations[peerConfigHashAnnotation] = peerHash
-	} else {
-		delete(existing.Spec.Template.Annotations, peerConfigHashAnnotation)
-	}
+	existing.Spec.Template.Labels = desired.Spec.Template.Labels
+	existing.Spec.Template.Annotations = desired.Spec.Template.Annotations
+	existing.Spec.Template.Spec.NodeSelector = desired.Spec.Template.Spec.NodeSelector
+	existing.Spec.Template.Spec.Tolerations = desired.Spec.Template.Spec.Tolerations
 	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
 	existing.Spec.Template.Spec.Containers[0].Resources = desired.Spec.Template.Spec.Containers[0].Resources
 	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
@@ -362,6 +374,19 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 	existing.Spec.Template.Spec.Containers[0].ReadinessProbe = desired.Spec.Template.Spec.Containers[0].ReadinessProbe
 	existing.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
 	return r.Update(ctx, existing)
+}
+
+// mergeStringMap returns a new map where keys from base are overlaid by overrides.
+// nil inputs are treated as empty.
+func mergeStringMap(base, overrides map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(overrides))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overrides {
+		out[k] = v
+	}
+	return out
 }
 
 func tcpProbe(initialDelay, period int32, failureThreshold int32) *corev1.Probe {
