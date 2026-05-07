@@ -10,7 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +42,7 @@ type DataPrepperClusterReconciler struct {
 // +kubebuilder:rbac:groups=dataprepper.gabia.com,resources=dataprepperclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps;services,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 
 func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -66,6 +69,9 @@ func (r *DataPrepperClusterReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileService(ctx, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.reconcileServiceMonitor(ctx, cluster); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.reconcileStatus(ctx, cluster); err != nil {
@@ -376,6 +382,79 @@ func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, clu
 		return r.Update(ctx, existing)
 	}
 	return nil
+}
+
+var serviceMonitorGVK = schema.GroupVersionKind{
+	Group:   "monitoring.coreos.com",
+	Version: "v1",
+	Kind:    "ServiceMonitor",
+}
+
+// reconcileServiceMonitor creates or removes a ServiceMonitor based on
+// spec.metrics.serviceMonitor. The ServiceMonitor CRD is optional; when it
+// is not installed the reconcile is a silent no-op.
+func (r *DataPrepperClusterReconciler) reconcileServiceMonitor(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	want := cluster.Spec.Metrics != nil && cluster.Spec.Metrics.ServiceMonitor
+
+	desired := &unstructured.Unstructured{}
+	desired.SetGroupVersionKind(serviceMonitorGVK)
+	desired.SetName(cluster.Name)
+	desired.SetNamespace(cluster.Namespace)
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(serviceMonitorGVK)
+	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	if meta.IsNoMatchError(getErr) {
+		return nil
+	}
+
+	if !want {
+		if errors.IsNotFound(getErr) {
+			return nil
+		}
+		if getErr != nil {
+			return getErr
+		}
+		return r.Delete(ctx, existing)
+	}
+
+	spec := map[string]any{
+		"selector": map[string]any{
+			"matchLabels": map[string]any{"app": cluster.Name},
+		},
+		"endpoints": []any{
+			map[string]any{
+				"port": "http",
+				"path": "/metrics/prometheus",
+			},
+		},
+	}
+	if err := unstructured.SetNestedMap(desired.Object, spec, "spec"); err != nil {
+		return err
+	}
+	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
+		return err
+	}
+
+	if errors.IsNotFound(getErr) {
+		err := r.Create(ctx, desired)
+		if meta.IsNoMatchError(err) {
+			return nil
+		}
+		return err
+	}
+	if getErr != nil {
+		return getErr
+	}
+
+	existingSpec, _, _ := unstructured.NestedMap(existing.Object, "spec")
+	if apiequality.Semantic.DeepEqual(existingSpec, spec) {
+		return nil
+	}
+	if err := unstructured.SetNestedMap(existing.Object, spec, "spec"); err != nil {
+		return err
+	}
+	return r.Update(ctx, existing)
 }
 
 // SetupWithManager sets up the controller with the Manager.

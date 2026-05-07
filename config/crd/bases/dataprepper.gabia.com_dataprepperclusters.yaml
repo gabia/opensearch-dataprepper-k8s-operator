@@ -2134,6 +2134,17 @@ spec:
                   image is the DataPrepper container image name (e.g. opensearchproject/data-prepper:2.13.0).
                   Required if classRef is not set; otherwise overrides the class image.
                 type: string
+              metrics:
+                description: metrics configures observability for the cluster.
+                properties:
+                  serviceMonitor:
+                    description: |-
+                      serviceMonitor creates a Prometheus Operator ServiceMonitor pointing at
+                      the DataPrepper /metrics/prometheus endpoint. Requires the
+                      monitoring.coreos.com/v1 ServiceMonitor CRD to be installed in the
+                      cluster; when absent, this field is silently ignored.
+                    type: boolean
+                type: object
               replicas:
                 default: 1
                 description: replicas is the desired number of DataPrepper instances.

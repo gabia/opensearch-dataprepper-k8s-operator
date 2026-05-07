@@ -60,6 +60,20 @@ type DataPrepperClusterSpec struct {
 	// that pipeline YAML references via ${VAR_NAME} substitution.
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// metrics configures observability for the cluster.
+	// +optional
+	Metrics *MetricsSpec `json:"metrics,omitempty"`
+}
+
+// MetricsSpec configures observability features for a DataPrepperCluster.
+type MetricsSpec struct {
+	// serviceMonitor creates a Prometheus Operator ServiceMonitor pointing at
+	// the DataPrepper /metrics/prometheus endpoint. Requires the
+	// monitoring.coreos.com/v1 ServiceMonitor CRD to be installed in the
+	// cluster; when absent, this field is silently ignored.
+	// +optional
+	ServiceMonitor bool `json:"serviceMonitor,omitempty"`
 }
 
 // DataPrepperClusterPhase represents the high-level state of a DataPrepperCluster.
