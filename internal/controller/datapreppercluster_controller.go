@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	dataprepperv1alpha1 "github.com/gabia/dataprepper-operator/api/v1alpha1"
+	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
 
 // resolvedConfig is the effective configuration after merging DataPrepperClass defaults

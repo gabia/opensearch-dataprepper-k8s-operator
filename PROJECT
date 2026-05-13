@@ -6,8 +6,8 @@ cliVersion: 4.13.1
 domain: gabia.com
 layout:
 - go.kubebuilder.io/v4
-projectName: dataprepper-operator
-repo: github.com/gabia/dataprepper-operator
+projectName: opensearch-dataprepper-k8s-operator
+repo: github.com/gabia/opensearch-dataprepper-k8s-operator
 resources:
 - api:
     crdVersion: v1
@@ -16,7 +16,7 @@ resources:
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperCluster
-  path: github.com/gabia/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     validation: true
@@ -28,7 +28,7 @@ resources:
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperPipeline
-  path: github.com/gabia/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     validation: true
@@ -38,6 +38,6 @@ resources:
   domain: gabia.com
   group: dataprepper
   kind: DataPrepperClass
-  path: github.com/gabia/dataprepper-operator/api/v1alpha1
+  path: github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: dataprepper-operator
+    app.kubernetes.io/name: opensearch-dataprepper-k8s-operator
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
@@ -14,13 +14,13 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: dataprepper-operator
+    app.kubernetes.io/name: opensearch-dataprepper-k8s-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
       control-plane: controller-manager
-      app.kubernetes.io/name: dataprepper-operator
+      app.kubernetes.io/name: opensearch-dataprepper-k8s-operator
   replicas: 1
   template:
     metadata:
@@ -28,7 +28,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
-        app.kubernetes.io/name: dataprepper-operator
+        app.kubernetes.io/name: opensearch-dataprepper-k8s-operator
     spec:
       # Uncomment the nodeAffinity block below to restrict scheduling to platforms your image supports.
       # Build multi-arch images with the docker-buildx Makefile target.

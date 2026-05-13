@@ -1,4 +1,4 @@
-# dataprepper-operator - AI Agent Guide
+# opensearch-dataprepper-k8s-operator - AI Agent Guide
 
 ## Project Structure
 

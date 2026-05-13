@@ -24,7 +24,7 @@ OpenSearch (opensearch-cluster-master.opensearch-system:9200)
 
 ## Prerequisites
 
-- A Kubernetes cluster with the dataprepper-operator installed (`make deploy`
+- A Kubernetes cluster with the opensearch-dataprepper-k8s-operator installed (`make deploy`
   from the repo root).
 - An OpenSearch cluster reachable at
   `http://opensearch-cluster-master.opensearch-system:9200`. The

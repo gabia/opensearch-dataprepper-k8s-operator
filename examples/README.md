@@ -16,7 +16,7 @@ All examples target the `operator-lab` namespace by default; change
 
 ## Prerequisites
 
-- The dataprepper-operator deployed (`make deploy IMG=...` from the
+- The opensearch-dataprepper-k8s-operator deployed (`make deploy IMG=...` from the
   repo root).
 - cert-manager installed in the cluster, since the operator's
   validating webhook needs a TLS cert.

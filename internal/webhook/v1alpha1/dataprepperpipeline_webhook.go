@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/yaml"
 
-	dataprepperv1alpha1 "github.com/gabia/dataprepper-operator/api/v1alpha1"
+	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
 
 // SetupDataPrepperPipelineWebhookWithManager registers the webhook for DataPrepperPipeline in the manager.

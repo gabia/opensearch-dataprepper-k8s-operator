@@ -10,7 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dataprepperv1alpha1 "github.com/gabia/dataprepper-operator/api/v1alpha1"
+	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
 
 // SetupDataPrepperClusterWebhookWithManager registers the webhook for DataPrepperCluster in the manager.

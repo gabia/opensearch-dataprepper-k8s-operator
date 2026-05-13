@@ -19,9 +19,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	dataprepperv1alpha1 "github.com/gabia/dataprepper-operator/api/v1alpha1"
-	"github.com/gabia/dataprepper-operator/internal/controller"
-	webhookv1alpha1 "github.com/gabia/dataprepper-operator/internal/webhook/v1alpha1"
+	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
+	"github.com/gabia/opensearch-dataprepper-k8s-operator/internal/controller"
+	webhookv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

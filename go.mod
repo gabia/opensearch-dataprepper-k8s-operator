@@ -1,4 +1,4 @@
-module github.com/gabia/dataprepper-operator
+module github.com/gabia/opensearch-dataprepper-k8s-operator
 
 go 1.25.3
 

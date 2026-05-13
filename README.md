@@ -1,4 +1,4 @@
-# dataprepper-operator
+# opensearch-dataprepper-k8s-operator
 
 A Kubernetes operator for [OpenSearch Data Prepper](https://github.com/opensearch-project/data-prepper). It manages DataPrepper instances and their pipelines as native Kubernetes resources, with hot pipeline updates, no manual config-map plumbing, and pluggable peer-forwarder discovery for multi-replica deployments.
 
@@ -130,9 +130,9 @@ Auto peer-config (when needed)           |
 ### Install
 
 ```sh
-make docker-build docker-push IMG=<registry>/dataprepper-operator:tag
+make docker-build docker-push IMG=<registry>/opensearch-dataprepper-k8s-operator:tag
 make install                                 # CRDs
-make deploy IMG=<registry>/dataprepper-operator:tag
+make deploy IMG=<registry>/opensearch-dataprepper-k8s-operator:tag
 ```
 
 ### Try it

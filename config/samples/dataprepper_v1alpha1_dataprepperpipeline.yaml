@@ -2,7 +2,7 @@ apiVersion: dataprepper.gabia.com/v1alpha1
 kind: DataPrepperPipeline
 metadata:
   labels:
-    app.kubernetes.io/name: dataprepper-operator
+    app.kubernetes.io/name: opensearch-dataprepper-k8s-operator
     app.kubernetes.io/managed-by: kustomize
   name: dataprepperpipeline-sample
 spec:

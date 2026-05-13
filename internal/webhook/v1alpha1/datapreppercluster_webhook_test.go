@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	dataprepperv1alpha1 "github.com/gabia/dataprepper-operator/api/v1alpha1"
+	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
 
 var _ = Describe("DataPrepperCluster Webhook", func() {
