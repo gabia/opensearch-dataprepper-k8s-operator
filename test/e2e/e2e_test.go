@@ -15,16 +15,16 @@ import (
 )
 
 // namespace where the project is deployed in
-const namespace = "opensearch-dataprepper-k8s-operator-system"
+const namespace = "dataprepper-operator-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "opensearch-dataprepper-k8s-operator-controller-manager"
+const serviceAccountName = "dataprepper-operator-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "opensearch-dataprepper-k8s-operator-controller-manager-metrics-service"
+const metricsServiceName = "dataprepper-operator-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "opensearch-dataprepper-k8s-operator-metrics-binding"
+const metricsRoleBindingName = "dataprepper-operator-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -157,7 +157,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=opensearch-dataprepper-k8s-operator-metrics-reader",
+				"--clusterrole=dataprepper-operator-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -196,7 +196,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for the webhook service endpoints to be ready")
 			verifyWebhookEndpointsReady := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
-					"-l", "kubernetes.io/service-name=opensearch-dataprepper-k8s-operator-webhook-service",
+					"-l", "kubernetes.io/service-name=dataprepper-operator-webhook-service",
 					"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
@@ -207,7 +207,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("verifying the validating webhook server is ready")
 			verifyValidatingWebhookReady := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"opensearch-dataprepper-k8s-operator-validating-webhook-configuration",
+					"dataprepper-operator-validating-webhook-configuration",
 					"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "ValidatingWebhookConfiguration should exist")
@@ -289,7 +289,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"opensearch-dataprepper-k8s-operator-validating-webhook-configuration",
+					"dataprepper-operator-validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
