@@ -415,6 +415,17 @@ func tcpProbe(initialDelay, period int32, failureThreshold int32) *corev1.Probe 
 }
 
 func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, cluster *dataprepperv1alpha1.DataPrepperCluster) error {
+	ports := []corev1.ServicePort{
+		{Name: "http", Port: 4900, TargetPort: intstr.FromString("http")},
+	}
+	for _, p := range cluster.Spec.ExtraPorts {
+		ports = append(ports, corev1.ServicePort{
+			Name:       p.Name,
+			Port:       p.ContainerPort,
+			TargetPort: intstr.FromInt32(p.ContainerPort),
+			Protocol:   p.Protocol,
+		})
+	}
 	desired := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
@@ -422,9 +433,7 @@ func (r *DataPrepperClusterReconciler) reconcileService(ctx context.Context, clu
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{"app": cluster.Name},
-			Ports: []corev1.ServicePort{
-				{Name: "http", Port: 4900, TargetPort: intstr.FromString("http")},
-			},
+			Ports:    ports,
 		},
 	}
 	if err := ctrl.SetControllerReference(cluster, desired, r.Scheme); err != nil {
