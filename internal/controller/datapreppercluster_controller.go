@@ -368,7 +368,14 @@ func (r *DataPrepperClusterReconciler) reconcileDeployment(ctx context.Context, 
 		existing.Spec.Replicas = desired.Spec.Replicas
 	}
 	existing.Spec.Template.Labels = desired.Spec.Template.Labels
+	preservedPipelinesHash := existing.Spec.Template.Annotations[pipelinesHashAnnotation]
 	existing.Spec.Template.Annotations = desired.Spec.Template.Annotations
+	if preservedPipelinesHash != "" {
+		if existing.Spec.Template.Annotations == nil {
+			existing.Spec.Template.Annotations = map[string]string{}
+		}
+		existing.Spec.Template.Annotations[pipelinesHashAnnotation] = preservedPipelinesHash
+	}
 	existing.Spec.Template.Spec.NodeSelector = desired.Spec.Template.Spec.NodeSelector
 	existing.Spec.Template.Spec.Tolerations = desired.Spec.Template.Spec.Tolerations
 	existing.Spec.Template.Spec.Containers[0].Image = desired.Spec.Template.Spec.Containers[0].Image
