@@ -134,7 +134,7 @@ Auto peer-config (when needed)           |
 The simplest way to install a tagged release is to apply the consolidated manifest published on the [Releases](https://github.com/gabia/opensearch-dataprepper-k8s-operator/releases) page. It bundles the CRDs and the operator Deployment, pinned to that release's image:
 
 ```sh
-kubectl apply -f https://github.com/gabia/opensearch-dataprepper-k8s-operator/releases/download/v1.0.0/install-v1.0.0.yaml
+kubectl apply -f https://github.com/gabia/opensearch-dataprepper-k8s-operator/releases/download/v1.0.1/install-v1.0.1.yaml
 ```
 
 To build and deploy from source instead:
