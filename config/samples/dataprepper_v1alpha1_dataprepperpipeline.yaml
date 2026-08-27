@@ -7,10 +7,10 @@ metadata:
   name: dataprepperpipeline-sample
 spec:
   clusterRef: datapreppercluster-sample
-  pipelineYaml: |
-    sample-pipeline:
-      source:
-        http:
-          port: 2021
-      sink:
-        - stdout:
+  yamlKey: sample-pipeline
+  pipeline:
+    source:
+      http:
+        port: 2021
+    sink:
+      - stdout:

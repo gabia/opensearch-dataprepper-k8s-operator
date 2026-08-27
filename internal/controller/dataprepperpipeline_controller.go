@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -21,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
@@ -186,7 +188,7 @@ func (r *DataPrepperPipelineReconciler) setStatus(ctx context.Context, pipeline 
 }
 
 // rebuildClusterConfig collects all pipelines targeting the given cluster (excluding excludeName),
-// updates the cluster's ConfigMap, and triggers a rolling restart of the cluster's Deployment.
+// renders them into a ConfigMap, and triggers a rolling restart of the cluster's Deployment.
 // Updates are skipped when the resulting content is identical, which prevents reconcile loops
 // when this controller watches the same ConfigMap and Deployment.
 func (r *DataPrepperPipelineReconciler) rebuildClusterConfig(ctx context.Context, namespace, clusterRef, excludeName string) error {
@@ -197,7 +199,7 @@ func (r *DataPrepperPipelineReconciler) rebuildClusterConfig(ctx context.Context
 		return err
 	}
 
-	var combined strings.Builder
+	definitions := make(map[string]json.RawMessage)
 	for _, p := range pipelineList.Items {
 		if p.Name == excludeName {
 			continue
@@ -208,12 +210,30 @@ func (r *DataPrepperPipelineReconciler) rebuildClusterConfig(ctx context.Context
 		if !p.DeletionTimestamp.IsZero() {
 			continue
 		}
-		combined.WriteString(p.Spec.PipelineYaml)
-		combined.WriteString("\n")
+		if strings.TrimSpace(p.Spec.YAMLKey) == "" {
+			return fmt.Errorf("DataPrepperPipeline %q has an empty spec.yamlKey", p.Name)
+		}
+		if _, exists := definitions[p.Spec.YAMLKey]; exists {
+			return fmt.Errorf("duplicate spec.yamlKey %q for DataPrepperCluster %q", p.Spec.YAMLKey, clusterRef)
+		}
+
+		var definition map[string]json.RawMessage
+		if err := json.Unmarshal(p.Spec.Pipeline.Raw, &definition); err != nil {
+			return fmt.Errorf("DataPrepperPipeline %q has an invalid spec.pipeline object: %w", p.Name, err)
+		}
+		if len(definition) == 0 {
+			return fmt.Errorf("DataPrepperPipeline %q has an empty spec.pipeline object", p.Name)
+		}
+		definitions[p.Spec.YAMLKey] = append(json.RawMessage(nil), p.Spec.Pipeline.Raw...)
 	}
-	content := combined.String()
-	if content == "" {
-		content = defaultPipelineYaml
+
+	content := defaultPipelineYaml
+	if len(definitions) > 0 {
+		rendered, err := yaml.Marshal(definitions)
+		if err != nil {
+			return fmt.Errorf("could not render pipeline definitions: %w", err)
+		}
+		content = string(rendered)
 	}
 
 	cmName := clusterRef + pipelinesConfigMapSuffix

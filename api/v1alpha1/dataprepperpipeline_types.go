@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // DataPrepperPipelineSpec defines the desired state of DataPrepperPipeline
@@ -10,9 +11,13 @@ type DataPrepperPipelineSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	ClusterRef string `json:"clusterRef"`
 
-	// pipelineYaml is the raw pipeline configuration in DataPrepper YAML format.
+	// yamlKey is the top-level key used when rendering this pipeline in DataPrepper YAML.
 	// +kubebuilder:validation:MinLength=1
-	PipelineYaml string `json:"pipelineYaml"`
+	YAMLKey string `json:"yamlKey"`
+
+	// pipeline is the structured definition of one DataPrepper pipeline.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Pipeline runtime.RawExtension `json:"pipeline"`
 }
 
 // DataPrepperPipelinePhase represents the high-level state of a DataPrepperPipeline.

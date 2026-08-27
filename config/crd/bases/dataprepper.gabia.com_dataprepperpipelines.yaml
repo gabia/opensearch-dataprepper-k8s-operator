@@ -55,14 +55,20 @@ spec:
                   the same namespace) this pipeline belongs to.
                 minLength: 1
                 type: string
-              pipelineYaml:
-                description: pipelineYaml is the raw pipeline configuration in DataPrepper
-                  YAML format.
+              pipeline:
+                description: pipeline is the structured definition of one DataPrepper
+                  pipeline.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              yamlKey:
+                description: yamlKey is the top-level key used when rendering this
+                  pipeline in DataPrepper YAML.
                 minLength: 1
                 type: string
             required:
             - clusterRef
-            - pipelineYaml
+            - pipeline
+            - yamlKey
             type: object
           status:
             description: status defines the observed state of DataPrepperPipeline

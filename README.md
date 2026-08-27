@@ -19,7 +19,7 @@ Adding a pipeline is `kubectl apply -f new-pipeline.yaml`. The operator merges a
 |---|---|---|
 | `DataPrepperClass` | Cluster | Cluster-scoped template carrying image, default resources, scheduling, common labels. Like `StorageClass` for `PersistentVolumeClaim`. |
 | `DataPrepperCluster` | Namespaced | A DataPrepper runtime: Deployment, Services, optional HPA and ServiceMonitor. Optionally references a class for defaults. |
-| `DataPrepperPipeline` | Namespaced | A single pipeline definition in raw DataPrepper YAML. Targets a cluster by name. |
+| `DataPrepperPipeline` | Namespaced | A single structured pipeline definition. Targets a cluster by name. |
 
 ### `DataPrepperCluster` spec at a glance
 
@@ -71,20 +71,22 @@ metadata:
   name: traces
 spec:
   clusterRef: my-prepper
-  pipelineYaml: |
-    traces-pipeline:
-      source:
-        otlp:
-          port: 21892
-      sink:
-        - opensearch:
-            hosts: [https://opensearch:9200]
-            index: otel-v1-apm-span
-            username: ${OS_USER}
-            password: ${OS_PASSWORD}
+  yamlKey: traces-pipeline
+  pipeline:
+    source:
+      otlp:
+        port: 21892
+    sink:
+      - opensearch:
+          hosts: [https://opensearch:9200]
+          index: otel-v1-apm-span
+          username: ${OS_USER}
+          password: ${OS_PASSWORD}
 ```
 
-A validating webhook parses `pipelineYaml` at admission time and rejects shapes that would fail at boot (missing `source`, missing `sink`, malformed YAML).
+`yamlKey` becomes the top-level key in the generated Data Prepper YAML. A validating webhook rejects invalid pipeline definitions, duplicate keys within a cluster, and definitions missing `source` or `sink`.
+
+> **Migration note:** `pipelineYaml` is no longer supported. Recreate existing `DataPrepperPipeline` resources with `yamlKey` and `pipeline` before upgrading the CRD.
 
 ## What the operator handles
 
@@ -114,7 +116,7 @@ Auto peer-config (when needed)           |
 ```
 
 - **`DataPrepperClusterReconciler`** owns the Deployment, Services, pipeline ConfigMap, and (when configured) HPA, ServiceMonitor, and operator-managed server config. It resolves image/resources/scheduling from `DataPrepperClass` when `classRef` is set.
-- **`DataPrepperPipelineReconciler`** watches pipelines, the cluster, and the cluster's ConfigMap. On any change it rebuilds the merged content, writes the ConfigMap, and bumps a content-hash annotation on the Deployment Pod template. Identical content is a no-op; the rolling restart only fires when something actually changed. The reconciler also lists pods to surface DataPrepper boot errors back onto Pipeline status.
+- **`DataPrepperPipelineReconciler`** watches pipelines, the cluster, and the cluster's ConfigMap. It renders each pipeline's `yamlKey` and structured `pipeline` definition into the merged ConfigMap, then bumps a content-hash annotation on the Deployment Pod template. Identical content is a no-op; the rolling restart only fires when something actually changed. The reconciler also lists pods to surface DataPrepper boot errors back onto Pipeline status.
 - **Finalizers** on each Pipeline ensure that deleting a pipeline rebuilds the ConfigMap and rolls the cluster on the way out, preventing orphaned config.
 
 ## Quick start

@@ -8,9 +8,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dataprepperv1alpha1 "github.com/gabia/opensearch-dataprepper-k8s-operator/api/v1alpha1"
 )
@@ -18,15 +20,20 @@ import (
 var _ = Describe("DataPrepperPipeline Controller", func() {
 	Context("When a pipeline targets an existing cluster", func() {
 		const (
-			clusterName  = "pipe-test-cluster"
-			pipelineName = "pipe-test-pipeline"
-			testImage    = "opensearchproject/data-prepper:2.15.0"
-			pipelineYaml = "demo-pipeline:\n  source:\n    http:\n      port: 2021\n  sink:\n    - stdout:\n"
+			clusterName              = "pipe-test-cluster"
+			pipelineName             = "pipe-test-pipeline"
+			pipelineYAMLKey          = "demo-pipeline"
+			secondPipelineName       = "second-pipeline"
+			secondPipelineYAMLKey    = "second-demo-pipeline"
+			testImage                = "opensearchproject/data-prepper:2.15.0"
+			pipelineDefinition       = `{"source":{"http":{"port":2021}},"sink":[{"stdout":null}]}`
+			secondPipelineDefinition = `{"source":{"http":{"port":2022}},"sink":[{"stdout":null}]}`
 		)
 
 		ctx := context.Background()
 		clusterKey := types.NamespacedName{Name: clusterName, Namespace: "default"}
 		pipelineKey := types.NamespacedName{Name: pipelineName, Namespace: "default"}
+		secondPipelineKey := types.NamespacedName{Name: secondPipelineName, Namespace: "default"}
 
 		BeforeEach(func() {
 			By("creating a DataPrepperCluster and reconciling it once so the ConfigMap exists")
@@ -50,8 +57,9 @@ var _ = Describe("DataPrepperPipeline Controller", func() {
 			pipeline := &dataprepperv1alpha1.DataPrepperPipeline{
 				ObjectMeta: metav1.ObjectMeta{Name: pipelineName, Namespace: "default"},
 				Spec: dataprepperv1alpha1.DataPrepperPipelineSpec{
-					ClusterRef:   clusterName,
-					PipelineYaml: pipelineYaml,
+					ClusterRef: clusterName,
+					YAMLKey:    pipelineYAMLKey,
+					Pipeline:   runtime.RawExtension{Raw: []byte(pipelineDefinition)},
 				},
 			}
 			Expect(k8sClient.Create(ctx, pipeline)).To(Succeed())
@@ -59,12 +67,14 @@ var _ = Describe("DataPrepperPipeline Controller", func() {
 
 		AfterEach(func() {
 			By("cleaning up cluster, pipeline, and owned objects")
-			pipeline := &dataprepperv1alpha1.DataPrepperPipeline{}
-			if err := k8sClient.Get(ctx, pipelineKey, pipeline); err == nil {
-				// Drop the finalizer so envtest (no controller manager loop) can delete.
-				pipeline.Finalizers = nil
-				_ = k8sClient.Update(ctx, pipeline)
-				_ = k8sClient.Delete(ctx, pipeline)
+			for _, key := range []types.NamespacedName{pipelineKey, secondPipelineKey} {
+				pipeline := &dataprepperv1alpha1.DataPrepperPipeline{}
+				if err := k8sClient.Get(ctx, key, pipeline); err == nil {
+					// Drop the finalizer so envtest (no controller manager loop) can delete.
+					pipeline.Finalizers = nil
+					_ = k8sClient.Update(ctx, pipeline)
+					_ = k8sClient.Delete(ctx, pipeline)
+				}
 			}
 			cluster := &dataprepperv1alpha1.DataPrepperCluster{}
 			if err := k8sClient.Get(ctx, clusterKey, cluster); err == nil {
@@ -101,6 +111,11 @@ var _ = Describe("DataPrepperPipeline Controller", func() {
 			Expect(k8sClient.Get(ctx, cmKey, cm)).To(Succeed())
 			Expect(cm.Data).To(HaveKey("pipelines.yaml"))
 			Expect(cm.Data["pipelines.yaml"]).To(ContainSubstring("demo-pipeline:"))
+			rendered := map[string]map[string]any{}
+			Expect(yaml.Unmarshal([]byte(cm.Data["pipelines.yaml"]), &rendered)).To(Succeed())
+			Expect(rendered).To(HaveKey(pipelineYAMLKey))
+			Expect(rendered[pipelineYAMLKey]).To(HaveKey("source"))
+			Expect(rendered[pipelineYAMLKey]).To(HaveKey("sink"))
 
 			By("verifying the Deployment has a content-hash annotation")
 			deploy := &appsv1.Deployment{}
@@ -111,6 +126,40 @@ var _ = Describe("DataPrepperPipeline Controller", func() {
 			pipeline := &dataprepperv1alpha1.DataPrepperPipeline{}
 			Expect(k8sClient.Get(ctx, pipelineKey, pipeline)).To(Succeed())
 			Expect(pipeline.Status.Phase).To(Equal(dataprepperv1alpha1.DataPrepperPipelinePhaseApplied))
+		})
+
+		It("merges definitions from multiple pipeline resources", func() {
+			reconciler := &DataPrepperPipelineReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: pipelineKey})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: pipelineKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			secondPipeline := &dataprepperv1alpha1.DataPrepperPipeline{
+				ObjectMeta: metav1.ObjectMeta{Name: secondPipelineName, Namespace: "default"},
+				Spec: dataprepperv1alpha1.DataPrepperPipelineSpec{
+					ClusterRef: clusterName,
+					YAMLKey:    secondPipelineYAMLKey,
+					Pipeline:   runtime.RawExtension{Raw: []byte(secondPipelineDefinition)},
+				},
+			}
+			Expect(k8sClient.Create(ctx, secondPipeline)).To(Succeed())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: secondPipelineKey})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: secondPipelineKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			cm := &corev1.ConfigMap{}
+			cmKey := types.NamespacedName{Name: clusterName + "-pipelines", Namespace: "default"}
+			Expect(k8sClient.Get(ctx, cmKey, cm)).To(Succeed())
+			rendered := map[string]map[string]any{}
+			Expect(yaml.Unmarshal([]byte(cm.Data["pipelines.yaml"]), &rendered)).To(Succeed())
+			Expect(rendered).To(HaveKey(pipelineYAMLKey))
+			Expect(rendered).To(HaveKey(secondPipelineYAMLKey))
 		})
 	})
 })
