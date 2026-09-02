@@ -185,3 +185,9 @@ See [`AGENTS.md`](./AGENTS.md) for the project layout and rules around generated
 ## Project status
 
 Alpha (`v1alpha1`). API may still change. The operator is in active PoC use against a multi-node Kubernetes cluster ingesting OTLP traffic from a real otel-collector into OpenSearch, with the validating webhook backed by cert-manager-issued certs.
+
+## License
+
+Copyright 2026 Gabia, Inc.
+
+Licensed under the [Apache License 2.0](./LICENSE).
