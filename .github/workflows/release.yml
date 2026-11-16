@@ -2,36 +2,75 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+      - release/**
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
-  packages: write
-
-env:
-  IMAGE_NAME: ghcr.io/gabia/opensearch-dataprepper-k8s-operator
+  contents: read
 
 jobs:
-  release:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release-please:
+    needs: ci
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: ${{ github.ref_name }}
+          config-file: ${{ github.ref_name == 'main' && 'release-please-config.json' || 'release-please-maintenance-config.json' }}
+
+  publish-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      IMAGE_NAME: ghcr.io/gabia/opensearch-dataprepper-k8s-operator
+      TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Verify draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
-      - name: Run tests
-        run: make test
-
       - name: Compute image tag
         id: vars
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          version="${TAG_NAME#v}"
           echo "img=${IMAGE_NAME}:${version}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
@@ -48,23 +87,37 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push manager image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ steps.vars.outputs.img }}
-            ${{ env.IMAGE_NAME }}:latest
+            ${{ github.ref_name == 'main' && format('{0}:latest', env.IMAGE_NAME) || '' }}
 
       - name: Build consolidated install manifest
         run: make build-installer IMG=${{ steps.vars.outputs.img }}
 
       - name: Rename install manifest for this release
-        run: cp dist/install.yaml "dist/install-${GITHUB_REF_NAME}.yaml"
+        run: cp dist/install.yaml "dist/install-${TAG_NAME}.yaml"
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist/install-${{ github.ref_name }}.yaml
-          generate_release_notes: true
+      - name: Upload install manifest to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG_NAME" "dist/install-${TAG_NAME}.yaml" --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-github-release:
+    needs:
+      - release-please
+      - publish-release
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish GitHub release
+        run: gh release edit "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
